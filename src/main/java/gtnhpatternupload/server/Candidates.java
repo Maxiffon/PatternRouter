@@ -25,12 +25,15 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 import appeng.api.AEApi;
 import appeng.api.config.SecurityPermissions;
+import appeng.api.implementations.ICraftingPatternItem;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridHost;
 import appeng.api.networking.IGridNode;
+import appeng.api.networking.crafting.ICraftingPatternDetails;
 import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.ISecurityGrid;
 import appeng.api.storage.StorageName;
+import appeng.api.storage.data.IAEStack;
 import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.helpers.IInterfaceHost;
@@ -134,6 +137,14 @@ public final class Candidates {
                     reply.conflicts.add(e);
                 }
             }
+            PatternUpload.LOG.info(
+                "Pattern upload for {}: category '{}', {} non-consumables, output {}, {} providers checked, {} conflicts",
+                player.getCommandSenderName(),
+                category,
+                nonConsumables.size(),
+                patternOutput(pattern, player.worldObj),
+                scored.size(),
+                conflicts.size());
             boolean anyMachine = false;
             for (Scored s : scored) anyMachine |= (s.flags & Net.Entry.RECIPE_MATCH) != 0;
             RecipeMap<?> wanted = recipeMapOf(category);
@@ -188,7 +199,7 @@ public final class Candidates {
     private static List<Scored> score(IGrid grid, World world, String category, List<ItemStack> nonConsumables,
         ItemStack pattern) {
         RecipeMap<?> wanted = recipeMapOf(category);
-        ItemStack output = patternOutput(pattern);
+        ItemStack output = patternOutput(pattern, world);
         List<Scored> out = new ArrayList<>();
         Set<IInterfaceViewable> seen = new HashSet<>();
         for (Class<? extends IInterfaceViewable> cls : AEApi.instance()
@@ -226,10 +237,15 @@ public final class Candidates {
             ItemStack in = inv.getStackInSlot(i);
             if (in == null) {
                 if (inv.isItemValidForSlot(i, pattern)) s.free++;
-            } else if (output != null && sameItem(patternOutput(in), output)) {
-                s.flags |= Net.Entry.HAS_SAME;
-                s.sameSlots.add(i);
-            }
+            } else if (output != null && sameItem(
+                patternOutput(
+                    in,
+                    view.getTileEntity() != null ? view.getTileEntity()
+                        .getWorldObj() : null),
+                output)) {
+                    s.flags |= Net.Entry.HAS_SAME;
+                    s.sameSlots.add(i);
+                }
         }
 
         if (wanted != null) {
@@ -363,10 +379,18 @@ public final class Candidates {
         return s != null && s.getItem() instanceof ItemEncodedPattern ? s : null;
     }
 
-    private static ItemStack patternOutput(ItemStack pattern) {
-        if (pattern == null || !(pattern.getItem() instanceof ItemEncodedPattern)) return null;
+    /**
+     * Основной выход шаблона. Разбираем сами в мире сервера: ItemEncodedPattern.getOutput() берёт мир у клиентского
+     * прокси AE2 и на сервере возвращает null.
+     */
+    private static ItemStack patternOutput(ItemStack pattern, World world) {
+        if (pattern == null || !(pattern.getItem() instanceof ICraftingPatternItem) || world == null) return null;
         try {
-            return ((ItemEncodedPattern) pattern.getItem()).getOutput(pattern);
+            ICraftingPatternDetails d = ((ICraftingPatternItem) pattern.getItem()).getPatternForItem(pattern, world);
+            if (d == null) return null;
+            IAEStack<?>[] outs = d.getCondensedAEOutputs();
+            if (outs == null || outs.length == 0 || outs[0] == null) return null;
+            return outs[0].getItemStackForNEI();
         } catch (Throwable t) {
             return null;
         }
