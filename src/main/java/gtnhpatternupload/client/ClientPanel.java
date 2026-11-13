@@ -19,6 +19,7 @@ import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.StatCollector;
+import net.minecraftforge.client.event.GuiScreenEvent;
 
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -30,7 +31,6 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import gtnhpatternupload.Net;
 import gtnhpatternupload.server.Candidates;
-import net.minecraftforge.client.event.GuiScreenEvent;
 
 /**
  * Боковая панель у терминала шаблонов. Всё на событиях Forge и обычных кнопках: интерфейс AE2 не патчится.
@@ -232,7 +232,9 @@ public class ClientPanel {
     }
 
     private static String keyOf(ItemStack pattern) {
-        return pattern.getTagCompound() == null ? "" : pattern.getTagCompound().toString();
+        return pattern.getTagCompound() == null ? ""
+            : pattern.getTagCompound()
+                .toString();
     }
 
     private void request(ItemStack pattern) {
@@ -275,12 +277,22 @@ public class ClientPanel {
 
     private static String flagsLine(Net.Entry e, boolean long_) {
         StringBuilder sb = new StringBuilder();
-        if ((e.flags & Net.Entry.MOLD_MATCH) != 0) sb.append("§a✔ ").append(I18n.format("gtnhpatternupload.flag.mold")).append("  ");
-        else if ((e.flags & Net.Entry.MOLD_MISMATCH) != 0) sb.append("§c✘ ").append(I18n.format("gtnhpatternupload.flag.othermold")).append("  ");
-        else if ((e.flags & Net.Entry.RECIPE_MATCH) != 0) sb.append("§a✔ ").append(I18n.format("gtnhpatternupload.flag.machine")).append("  ");
-        if ((e.flags & Net.Entry.HAS_SAME) != 0) sb.append("§e").append(I18n.format("gtnhpatternupload.flag.same")).append("  ");
-        if (e.free == 0) sb.append("§c").append(I18n.format("gtnhpatternupload.flag.full"));
-        else sb.append("§7").append(I18n.format(long_ ? "gtnhpatternupload.flag.free.long" : "gtnhpatternupload.flag.free", e.free));
+        if ((e.flags & Net.Entry.MOLD_MATCH) != 0) sb.append("§a✔ ")
+            .append(I18n.format("gtnhpatternupload.flag.mold"))
+            .append("  ");
+        else if ((e.flags & Net.Entry.MOLD_MISMATCH) != 0) sb.append("§c✘ ")
+            .append(I18n.format("gtnhpatternupload.flag.othermold"))
+            .append("  ");
+        else if ((e.flags & Net.Entry.RECIPE_MATCH) != 0) sb.append("§a✔ ")
+            .append(I18n.format("gtnhpatternupload.flag.machine"))
+            .append("  ");
+        if ((e.flags & Net.Entry.HAS_SAME) != 0) sb.append("§e")
+            .append(I18n.format("gtnhpatternupload.flag.same"))
+            .append("  ");
+        if (e.free == 0) sb.append("§c")
+            .append(I18n.format("gtnhpatternupload.flag.full"));
+        else sb.append("§7")
+            .append(I18n.format(long_ ? "gtnhpatternupload.flag.free.long" : "gtnhpatternupload.flag.free", e.free));
         return sb.toString();
     }
 
@@ -379,14 +391,19 @@ public class ClientPanel {
             boolean hover = hovered(mx, my);
             int bg = (e.flags & Net.Entry.MOLD_MATCH) != 0 ? 0xC0183A24
                 : (e.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 0xC03A1818
-                : (e.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0xC01C2A3A : 0xC0202020;
+                    : (e.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0xC01C2A3A : 0xC0202020;
             if (hover) bg = (bg & 0x00FFFFFF) | 0xF0000000 | 0x202020;
             drawRect(xPosition, yPosition, xPosition + width, yPosition + height, bg);
             if (e.icon != null) {
                 GL11.glPushMatrix();
                 RenderHelper.enableGUIStandardItemLighting();
                 GL11.glEnable(GL12.GL_RESCALE_NORMAL);
-                ITEM_RENDER.renderItemAndEffectIntoGUI(mc.fontRenderer, mc.getTextureManager(), e.icon, xPosition + 2, yPosition + 3);
+                ITEM_RENDER.renderItemAndEffectIntoGUI(
+                    mc.fontRenderer,
+                    mc.getTextureManager(),
+                    e.icon,
+                    xPosition + 2,
+                    yPosition + 3);
                 RenderHelper.disableStandardItemLighting();
                 GL11.glDisable(GL11.GL_LIGHTING);
                 GL11.glPopMatrix();

@@ -15,7 +15,9 @@ public class ClientProxy extends CommonProxy {
     public void init() {
         super.init();
         MinecraftForge.EVENT_BUS.register(panel);
-        FMLCommonHandler.instance().bus().register(panel);
+        FMLCommonHandler.instance()
+            .bus()
+            .register(panel);
         if (Loader.isModLoaded("NotEnoughItems")) NeiCompat.register(panel);
     }
 

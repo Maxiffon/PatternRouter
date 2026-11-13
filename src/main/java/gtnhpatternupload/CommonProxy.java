@@ -17,7 +17,9 @@ public class CommonProxy {
     }
 
     public void init() {
-        FMLCommonHandler.instance().bus().register(this);
+        FMLCommonHandler.instance()
+            .bus()
+            .register(this);
     }
 
     /** Только на клиенте: пришёл список кандидатов. */

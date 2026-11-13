@@ -30,11 +30,11 @@ import appeng.api.networking.IGridHost;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.ISecurityGrid;
+import appeng.api.storage.StorageName;
 import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.helpers.IInterfaceHost;
 import appeng.items.misc.ItemEncodedPattern;
-import appeng.api.storage.StorageName;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.interfaces.tileentity.RecipeMapWorkable;
@@ -125,7 +125,8 @@ public final class Candidates {
     /** Подходящие сверху: есть место → машина → форма → нет такого же шаблона → имя. */
     private static final Comparator<Scored> ORDER = Comparator.<Scored>comparingInt(s -> s.free > 0 ? 0 : 1)
         .thenComparingInt(s -> (s.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0 : 1)
-        .thenComparingInt(s -> (s.flags & Net.Entry.MOLD_MATCH) != 0 ? 0 : (s.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 2 : 1)
+        .thenComparingInt(
+            s -> (s.flags & Net.Entry.MOLD_MATCH) != 0 ? 0 : (s.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 2 : 1)
         .thenComparingInt(s -> (s.flags & Net.Entry.HAS_SAME) != 0 ? 1 : 0)
         .thenComparing(s -> s.name);
 
@@ -223,13 +224,17 @@ public final class Candidates {
     public static void handleUpload(EntityPlayerMP player, int token, int index) {
         Session session = SESSIONS.get(player.getUniqueID());
         Container open = player.openContainer;
-        if (session == null || session.token != token || session.container.get() != open
-            || !(open instanceof ContainerPatternTerm) || index < 0 || index >= session.targets.size()) {
+        if (session == null || session.token != token
+            || session.container.get() != open
+            || !(open instanceof ContainerPatternTerm)
+            || index < 0
+            || index >= session.targets.size()) {
             Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
             return;
         }
         ContainerPatternTerm term = (ContainerPatternTerm) open;
-        IInterfaceViewable view = session.targets.get(index).get();
+        IInterfaceViewable view = session.targets.get(index)
+            .get();
         IGrid grid = gridOf(term);
         if (view == null || grid == null || !sameGrid(view, grid)) {
             Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
@@ -239,7 +244,8 @@ public final class Candidates {
             Net.CH.sendTo(new Net.Result(Net.Result.DENIED, view.getRawName()), player);
             return;
         }
-        IInventory patternInv = term.getPatternTerminal().getInventoryByName(StorageName.CRAFTING_PATTERN.getName());
+        IInventory patternInv = term.getPatternTerminal()
+            .getInventoryByName(StorageName.CRAFTING_PATTERN.getName());
         ItemStack pattern = patternInv == null ? null : patternInv.getStackInSlot(1);
         if (pattern == null || !(pattern.getItem() instanceof ItemEncodedPattern)) {
             Net.CH.sendTo(new Net.Result(Net.Result.NO_PATTERN, view.getRawName()), player);
@@ -257,7 +263,8 @@ public final class Candidates {
                 patternInv.setInventorySlotContents(1, pattern.stackSize > 0 ? pattern : null);
                 term.detectAndSendChanges();
                 Net.CH.sendTo(new Net.Result(Net.Result.OK, view.getRawName()), player);
-                PatternUpload.LOG.debug("{} uploaded a pattern to {}", player.getCommandSenderName(), view.getRawName());
+                PatternUpload.LOG
+                    .debug("{} uploaded a pattern to {}", player.getCommandSenderName(), view.getRawName());
                 return;
             }
         }
@@ -267,7 +274,8 @@ public final class Candidates {
     // ------------------------------------------------------------------ помощники
 
     private static ItemStack encodedPattern(ContainerPatternTerm term) {
-        IInventory inv = term.getPatternTerminal().getInventoryByName(StorageName.CRAFTING_PATTERN.getName());
+        IInventory inv = term.getPatternTerminal()
+            .getInventoryByName(StorageName.CRAFTING_PATTERN.getName());
         if (inv == null || inv.getSizeInventory() < 2) return null;
         ItemStack s = inv.getStackInSlot(1);
         return s != null && s.getItem() instanceof ItemEncodedPattern ? s : null;
@@ -286,7 +294,8 @@ public final class Candidates {
         Object target = term.getTarget();
         IGridNode node = null;
         if (target instanceof IActionHost) node = ((IActionHost) target).getActionableNode();
-        if (node == null && target instanceof IGridHost) node = ((IGridHost) target).getGridNode(ForgeDirection.UNKNOWN);
+        if (node == null && target instanceof IGridHost)
+            node = ((IGridHost) target).getGridNode(ForgeDirection.UNKNOWN);
         return node == null ? null : node.getGrid();
     }
 
