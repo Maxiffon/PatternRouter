@@ -1,4 +1,4 @@
-package gtnhpatternupload;
+package patternrouter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +16,7 @@ public class LateMixinLoader implements ILateMixinLoader {
 
     @Override
     public String getMixinConfig() {
-        return "mixins.gtnhpatternupload.late.json";
+        return "mixins.patternrouter.late.json";
     }
 
     @Override

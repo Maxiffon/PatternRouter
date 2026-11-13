@@ -1,4 +1,4 @@
-package gtnhpatternupload.client;
+package patternrouter.client;
 
 import java.util.ArrayList;
 import java.util.Collections;

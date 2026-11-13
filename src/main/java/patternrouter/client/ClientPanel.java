@@ -1,4 +1,4 @@
-package gtnhpatternupload.client;
+package patternrouter.client;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,9 +30,9 @@ import appeng.items.misc.ItemEncodedPattern;
 import cpw.mods.fml.common.ObfuscationReflectionHelper;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
-import gtnhpatternupload.Config;
-import gtnhpatternupload.Net;
-import gtnhpatternupload.server.Candidates;
+import patternrouter.Config;
+import patternrouter.Net;
+import patternrouter.server.Candidates;
 
 /**
  * Боковая панель у терминала шаблонов в стиле окон AE2. Всё на событиях Forge и обычных кнопках: интерфейс AE2 не
@@ -135,13 +135,7 @@ public class ClientPanel {
             ConflictRow c = new ConflictRow(BASE_ID + 20 + i, i);
             confRows.add(c);
             e.buttonList.add(c);
-            GuiButton x = new GuiButton(
-                BASE_ID + 40 + i,
-                0,
-                0,
-                52,
-                16,
-                I18n.format("gtnhpatternupload.button.extract"));
+            GuiButton x = new GuiButton(BASE_ID + 40 + i, 0, 0, 52, 16, I18n.format("patternrouter.button.extract"));
             extractButtons.add(x);
             e.buttonList.add(x);
         }
@@ -180,7 +174,7 @@ public class ClientPanel {
                 List<String> tip = new ArrayList<>();
                 tip.add(displayName(en));
                 tip.add(flagsLine(en, true));
-                tip.add("§7" + I18n.format("gtnhpatternupload.tip.click"));
+                tip.add("§7" + I18n.format("patternrouter.tip.click"));
                 drawTooltip(tip, e.mouseX, e.mouseY);
             }
         }
@@ -192,7 +186,7 @@ public class ClientPanel {
                 && e.mouseY < x.yPosition + x.height) {
                 List<String> tip = new ArrayList<>();
                 tip.add(displayName(conflicts.get(i)));
-                tip.add("§7" + I18n.format("gtnhpatternupload.tip.extract"));
+                tip.add("§7" + I18n.format("patternrouter.tip.extract"));
                 drawTooltip(tip, e.mouseX, e.mouseY);
             }
         }
@@ -211,14 +205,14 @@ public class ClientPanel {
             if (index < entries.size()) {
                 lastActionName = displayName(entries.get(index));
                 Net.CH.sendToServer(new Net.Upload(token, index));
-                setStatus(I18n.format("gtnhpatternupload.status.uploading"), GUI_TEXT_DIM, 3000);
+                setStatus(I18n.format("patternrouter.status.uploading"), GUI_TEXT_DIM, 3000);
             }
         } else {
             int i = extractButtons.indexOf(e.button);
             if (i >= 0 && i < conflicts.size()) {
                 lastActionName = displayName(conflicts.get(i));
                 Net.CH.sendToServer(new Net.ExtractOld(token, i));
-                setStatus(I18n.format("gtnhpatternupload.status.extracting"), GUI_TEXT_DIM, 3000);
+                setStatus(I18n.format("patternrouter.status.extracting"), GUI_TEXT_DIM, 3000);
             }
         }
     }
@@ -242,26 +236,26 @@ public class ClientPanel {
         int good = 0x1E7A1E, bad = 0xB00000;
         switch (msg.code) {
             case Net.Result.OK:
-                setStatus(I18n.format("gtnhpatternupload.result.ok", name), good, 4000);
+                setStatus(I18n.format("patternrouter.result.ok", name), good, 4000);
                 break;
             case Net.Result.EXTRACTED:
-                setStatus(I18n.format("gtnhpatternupload.result.extracted", name), good, 4000);
+                setStatus(I18n.format("patternrouter.result.extracted", name), good, 4000);
                 lastKey = null; // обновить список конфликтов
                 break;
             case Net.Result.INV_FULL:
-                setStatus(I18n.format("gtnhpatternupload.result.invfull"), bad, 4000);
+                setStatus(I18n.format("patternrouter.result.invfull"), bad, 4000);
                 break;
             case Net.Result.FULL:
-                setStatus(I18n.format("gtnhpatternupload.result.full", name), bad, 4000);
+                setStatus(I18n.format("patternrouter.result.full", name), bad, 4000);
                 break;
             case Net.Result.DENIED:
-                setStatus(I18n.format("gtnhpatternupload.result.denied"), bad, 4000);
+                setStatus(I18n.format("patternrouter.result.denied"), bad, 4000);
                 break;
             case Net.Result.NO_PATTERN:
-                setStatus(I18n.format("gtnhpatternupload.result.nopattern"), bad, 4000);
+                setStatus(I18n.format("patternrouter.result.nopattern"), bad, 4000);
                 break;
             default:
-                setStatus(I18n.format("gtnhpatternupload.result.gone"), bad, 4000);
+                setStatus(I18n.format("patternrouter.result.gone"), bad, 4000);
                 lastKey = null; // запросить список заново
         }
     }
@@ -467,41 +461,41 @@ public class ClientPanel {
         StringBuilder sb = new StringBuilder();
         if ((e.flags & Net.Entry.MOLD_MATCH) != 0) sb.append(good)
             .append("✔ ")
-            .append(I18n.format("gtnhpatternupload.flag.mold"))
+            .append(I18n.format("patternrouter.flag.mold"))
             .append("  ");
         else if ((e.flags & Net.Entry.MOLD_MISMATCH) != 0) sb.append(bad)
             .append("✘ ")
-            .append(I18n.format("gtnhpatternupload.flag.othermold"))
+            .append(I18n.format("patternrouter.flag.othermold"))
             .append("  ");
         else if ((e.flags & Net.Entry.RECIPE_MATCH) != 0) sb.append(good)
             .append("✔ ")
-            .append(I18n.format("gtnhpatternupload.flag.machine"))
+            .append(I18n.format("patternrouter.flag.machine"))
             .append("  ");
         if ((e.flags & Net.Entry.HAS_SAME) != 0) sb.append(warn)
-            .append(I18n.format("gtnhpatternupload.flag.same"))
+            .append(I18n.format("patternrouter.flag.same"))
             .append("  ");
         if (e.free == 0) sb.append(bad)
-            .append(I18n.format("gtnhpatternupload.flag.full"));
+            .append(I18n.format("patternrouter.flag.full"));
         else sb.append(dim)
-            .append(I18n.format(tooltip ? "gtnhpatternupload.flag.free.long" : "gtnhpatternupload.flag.free", e.free));
+            .append(I18n.format(tooltip ? "patternrouter.flag.free.long" : "patternrouter.flag.free", e.free));
         return sb.toString();
     }
 
     private String noteText() {
-        if (waiting) return I18n.format("gtnhpatternupload.note.waiting");
+        if (waiting) return I18n.format("patternrouter.note.waiting");
         switch (note) {
             case Candidates.NOTE_NO_PATTERN:
-                return I18n.format("gtnhpatternupload.note.nopattern");
+                return I18n.format("patternrouter.note.nopattern");
             case Candidates.NOTE_NO_GRID:
-                return I18n.format("gtnhpatternupload.note.nogrid");
+                return I18n.format("patternrouter.note.nogrid");
             case Candidates.NOTE_DENIED:
-                return I18n.format("gtnhpatternupload.note.denied");
+                return I18n.format("patternrouter.note.denied");
             case Candidates.NOTE_NO_MACHINE:
-                return I18n.format("gtnhpatternupload.note.nomachine");
+                return I18n.format("patternrouter.note.nomachine");
             case Candidates.NOTE_UNKNOWN_RECIPE:
-                return I18n.format("gtnhpatternupload.note.unknown");
+                return I18n.format("patternrouter.note.unknown");
             default:
-                return entries.isEmpty() && note >= 0 ? I18n.format("gtnhpatternupload.note.empty") : "";
+                return entries.isEmpty() && note >= 0 ? I18n.format("patternrouter.note.empty") : "";
         }
     }
 
@@ -602,7 +596,7 @@ public class ClientPanel {
                 drawItem(mc, currentPattern, xPosition + 6, yPosition + 3);
                 tx = xPosition + 27;
             }
-            fr.drawString(I18n.format("gtnhpatternupload.title"), tx, yPosition + 7, GUI_TEXT);
+            fr.drawString(I18n.format("patternrouter.title"), tx, yPosition + 7, GUI_TEXT);
             if (entries.size() > ROWS) {
                 String page = (scroll + 1) + "-" + Math.min(scroll + ROWS, entries.size()) + "/" + entries.size();
                 fr.drawString(page, xPosition + width - 8 - fr.getStringWidth(page), yPosition + 7, GUI_TEXT_DIM);
@@ -619,14 +613,14 @@ public class ClientPanel {
             int confShown = Math.min(conflicts.size(), CONF_ROWS);
             if (confShown > 0) {
                 fr.drawString(
-                    fr.trimStringToWidth(I18n.format("gtnhpatternupload.conflict.title", conflicts.size()), width - 16),
+                    fr.trimStringToWidth(I18n.format("patternrouter.conflict.title", conflicts.size()), width - 16),
                     xPosition + 8,
                     confY + 3,
                     GUI_TEXT_BAD);
                 drawInset(xPosition + 4, confY + 13, width - 8, confShown * CONF_H + 1);
                 if (conflicts.size() > CONF_ROWS) {
                     fr.drawString(
-                        I18n.format("gtnhpatternupload.conflict.more", conflicts.size() - CONF_ROWS),
+                        I18n.format("patternrouter.conflict.more", conflicts.size() - CONF_ROWS),
                         xPosition + 8,
                         confY + 15 + confShown * CONF_H,
                         GUI_TEXT_DIM);

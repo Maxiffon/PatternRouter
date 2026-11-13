@@ -1,4 +1,4 @@
-package gtnhpatternupload;
+package patternrouter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,8 +13,8 @@ import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
 import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import cpw.mods.fml.relauncher.Side;
-import gtnhpatternupload.server.Candidates;
 import io.netty.buffer.ByteBuf;
+import patternrouter.server.Candidates;
 
 /** Сетевые сообщения: запрос списка, список, загрузка, результат. */
 public final class Net {
@@ -24,7 +24,7 @@ public final class Net {
     private Net() {}
 
     public static void init() {
-        CH = NetworkRegistry.INSTANCE.newSimpleChannel("gtnhpatupl");
+        CH = NetworkRegistry.INSTANCE.newSimpleChannel("patrouter");
         CH.registerMessage(Request.Handler.class, Request.class, 0, Side.SERVER);
         CH.registerMessage(Upload.Handler.class, Upload.class, 1, Side.SERVER);
         CH.registerMessage(CandidateList.Handler.class, CandidateList.class, 2, Side.CLIENT);
@@ -220,7 +220,7 @@ public final class Net {
 
             @Override
             public IMessage onMessage(CandidateList msg, MessageContext ctx) {
-                PatternUpload.proxy.onCandidates(msg);
+                PatternRouter.proxy.onCandidates(msg);
                 return null;
             }
         }
@@ -262,7 +262,7 @@ public final class Net {
 
             @Override
             public IMessage onMessage(Result msg, MessageContext ctx) {
-                PatternUpload.proxy.onResult(msg);
+                PatternRouter.proxy.onResult(msg);
                 return null;
             }
         }

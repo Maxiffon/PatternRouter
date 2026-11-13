@@ -1,10 +1,10 @@
-package gtnhpatternupload;
+package patternrouter;
 
 import java.io.File;
 
 import net.minecraftforge.common.config.Configuration;
 
-/** config/gtnhpatternupload.cfg */
+/** config/patternrouter.cfg */
 public final class Config {
 
     /** Где показывать панель: right — справа от терминала (NEI уступает место), left — слева. */

@@ -1,4 +1,4 @@
-package gtnhpatternupload;
+package patternrouter;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -16,18 +16,18 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
  * подключается, просто панель ничего не найдёт.
  */
 @Mod(
-    modid = PatternUpload.MODID,
-    name = PatternUpload.NAME,
+    modid = PatternRouter.MODID,
+    name = PatternRouter.NAME,
     version = Tags.VERSION,
     dependencies = "required-after:appliedenergistics2;required-after:gregtech;after:NotEnoughItems",
     acceptableRemoteVersions = "*")
-public class PatternUpload {
+public class PatternRouter {
 
-    public static final String MODID = "gtnhpatternupload";
-    public static final String NAME = "GTNH Pattern Upload";
+    public static final String MODID = "patternrouter";
+    public static final String NAME = "Pattern Router";
     public static final Logger LOG = LogManager.getLogger(NAME);
 
-    @SidedProxy(clientSide = "gtnhpatternupload.ClientProxy", serverSide = "gtnhpatternupload.CommonProxy")
+    @SidedProxy(clientSide = "patternrouter.ClientProxy", serverSide = "patternrouter.CommonProxy")
     public static CommonProxy proxy;
 
     @Mod.EventHandler

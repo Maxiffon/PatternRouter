@@ -1,11 +1,11 @@
-package gtnhpatternupload;
+package patternrouter;
 
 import net.minecraftforge.common.MinecraftForge;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Loader;
-import gtnhpatternupload.client.ClientPanel;
-import gtnhpatternupload.client.NeiCompat;
+import patternrouter.client.ClientPanel;
+import patternrouter.client.NeiCompat;
 
 public class ClientProxy extends CommonProxy {
 

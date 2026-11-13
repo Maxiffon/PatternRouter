@@ -1,4 +1,4 @@
-package gtnhpatternupload.server;
+package patternrouter.server;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -51,9 +51,9 @@ import gregtech.api.recipe.RecipeCategory;
 import gregtech.api.recipe.RecipeMap;
 import gregtech.api.util.GTRecipe;
 import gregtech.common.tileentities.machines.MTEHatchCraftingInputME;
-import gtnhpatternupload.Net;
-import gtnhpatternupload.PatternUpload;
-import gtnhpatternupload.mixins.late.gt.MTEHatchAccessor;
+import patternrouter.Net;
+import patternrouter.PatternRouter;
+import patternrouter.mixins.late.gt.MTEHatchAccessor;
 
 /**
  * Серверная часть: ищет в ME-сети открытого терминала шаблонов интерфейсы и CRIB, подходящие под рецепт, и кладёт
@@ -141,7 +141,7 @@ public final class Candidates {
                     reply.conflicts.add(e);
                 }
             }
-            PatternUpload.LOG.info(
+            PatternRouter.LOG.info(
                 "Pattern upload for {}: category '{}', {} non-consumables, output {}, {} providers checked, {} conflicts",
                 player.getCommandSenderName(),
                 category,
@@ -221,7 +221,7 @@ public final class Candidates {
                 try {
                     out.add(scoreOne(view, inv, wanted, nonConsumables, pattern, output, contents));
                 } catch (Throwable t) {
-                    PatternUpload.LOG.warn("Skipping provider {}: {}", view.getName(), t.toString());
+                    PatternRouter.LOG.warn("Skipping provider {}: {}", view.getName(), t.toString());
                 }
             }
         }
@@ -316,7 +316,7 @@ public final class Candidates {
                     else if (outs[0] instanceof IAEFluidStack) pc.outFluid = ((IAEFluidStack) outs[0]).getFluidStack();
                 }
             } catch (Throwable t) {
-                PatternUpload.LOG.debug("Cannot decode pattern: {}", t.toString());
+                PatternRouter.LOG.debug("Cannot decode pattern: {}", t.toString());
             }
             return pc;
         }
@@ -441,7 +441,7 @@ public final class Candidates {
                 patternInv.setInventorySlotContents(1, pattern.stackSize > 0 ? pattern : null);
                 term.detectAndSendChanges();
                 Net.CH.sendTo(new Net.Result(Net.Result.OK, view.getRawName()), player);
-                PatternUpload.LOG
+                PatternRouter.LOG
                     .debug("{} uploaded a pattern to {}", player.getCommandSenderName(), view.getRawName());
                 return;
             }
@@ -527,7 +527,7 @@ public final class Candidates {
             if (!c.isEmpty()) return c;
         }
         if (mte instanceof MTEHatch && depth == 0) {
-            ChunkCoordinates owner = ((MTEHatchAccessor) mte).gtnhpatternupload$getOwner();
+            ChunkCoordinates owner = ((MTEHatchAccessor) mte).patternrouter$getOwner();
             World w = te.getWorldObj();
             if (owner != null && w != null && w.blockExists(owner.posX, owner.posY, owner.posZ)) {
                 return recipeMapsOf(w.getTileEntity(owner.posX, owner.posY, owner.posZ), 1);

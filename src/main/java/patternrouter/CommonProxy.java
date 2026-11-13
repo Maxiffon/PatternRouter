@@ -1,4 +1,4 @@
-package gtnhpatternupload;
+package patternrouter;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -37,7 +37,7 @@ public class CommonProxy {
             try {
                 r.run();
             } catch (Throwable t) {
-                PatternUpload.LOG.error("Server task failed", t);
+                PatternRouter.LOG.error("Server task failed", t);
             }
         }
     }

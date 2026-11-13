@@ -1,4 +1,4 @@
-package gtnhpatternupload.client;
+package patternrouter.client;
 
 import net.minecraft.client.gui.inventory.GuiContainer;
 

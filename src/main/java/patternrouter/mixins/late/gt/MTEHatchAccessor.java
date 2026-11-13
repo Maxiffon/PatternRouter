@@ -1,4 +1,4 @@
-package gtnhpatternupload.mixins.late.gt;
+package patternrouter.mixins.late.gt;
 
 import net.minecraft.util.ChunkCoordinates;
 
@@ -12,5 +12,5 @@ import gregtech.api.metatileentity.implementations.MTEHatch;
 public interface MTEHatchAccessor {
 
     @Accessor(value = "ae2CraftingIconOwner", remap = false)
-    ChunkCoordinates gtnhpatternupload$getOwner();
+    ChunkCoordinates patternrouter$getOwner();
 }
