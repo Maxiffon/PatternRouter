@@ -54,6 +54,13 @@ public class ClientPanel {
     private static final int CONF_ROWS = 3;
     private static final int HEADER = 22;
     private static final int FOOTER = 22;
+    /** Текущая высота подвала (строка состояния может переноситься). */
+    private int footer = FOOTER;
+
+    private int statusWidth() {
+        return pw - 16 - (up != null && up.visible ? 50 : 0);
+    }
+
     private static final int BASE_ID = 0x6A5000;
     private static final RenderItem ITEM_RENDER = new RenderItem();
 
@@ -310,7 +317,14 @@ public class ClientPanel {
         int confBlock = confShown == 0 ? 0 : 14 + confShown * CONF_H + (conflicts.size() > CONF_ROWS ? 10 : 0) + 4;
 
         int body = shown * ROW_H + (shown > 0 ? 4 : 0) + (noteLines > 0 ? noteLines * 10 + 4 : 0) + confBlock;
-        ph = HEADER + Math.max(body, 12) + FOOTER;
+        // Подвал растёт под длинную строку состояния (переносим, а не обрезаем).
+        footer = FOOTER;
+        if (System.currentTimeMillis() < statusUntil && !status.isEmpty()) {
+            int lines = fr.listFormattedStringToWidth(status, statusWidth())
+                .size();
+            footer = Math.max(FOOTER, lines * 10 + 10);
+        }
+        ph = HEADER + Math.max(body, 12) + footer;
         py = Math.max(2, Math.min(top, gui.height - ph - 2));
         listY = py + HEADER;
         noteY = listY + shown * ROW_H + (shown > 0 ? 4 : 0);
@@ -343,7 +357,7 @@ public class ClientPanel {
         }
         up.xPosition = px + pw - 48;
         down.xPosition = px + pw - 26;
-        up.yPosition = down.yPosition = py + ph - FOOTER + 3;
+        up.yPosition = down.yPosition = py + ph - footer + 3;
         up.visible = down.visible = visible && entries.size() > ROWS;
         up.enabled = scroll > 0;
         down.enabled = scroll < maxScroll;
@@ -619,8 +633,10 @@ public class ClientPanel {
                 }
             }
             if (System.currentTimeMillis() < statusUntil && !status.isEmpty()) {
-                String s = fr.trimStringToWidth(status, width - (up.visible ? 60 : 16));
-                fr.drawString(s, xPosition + 8, yPosition + height - FOOTER + 7, statusColor);
+                List<String> lines = fr.listFormattedStringToWidth(status, statusWidth());
+                for (int i = 0; i < lines.size(); i++) {
+                    fr.drawString(lines.get(i), xPosition + 8, yPosition + height - footer + 6 + i * 10, statusColor);
+                }
             }
         }
 

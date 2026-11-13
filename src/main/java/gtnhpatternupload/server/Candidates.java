@@ -22,6 +22,7 @@ import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.util.IChatComponent;
 import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
+import net.minecraftforge.fluids.FluidStack;
 
 import appeng.api.AEApi;
 import appeng.api.config.SecurityPermissions;
@@ -33,6 +34,8 @@ import appeng.api.networking.crafting.ICraftingPatternDetails;
 import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.ISecurityGrid;
 import appeng.api.storage.StorageName;
+import appeng.api.storage.data.IAEFluidStack;
+import appeng.api.storage.data.IAEItemStack;
 import appeng.api.storage.data.IAEStack;
 import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
@@ -46,6 +49,7 @@ import gregtech.api.metatileentity.implementations.MTEHatch;
 import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
 import gregtech.api.recipe.RecipeCategory;
 import gregtech.api.recipe.RecipeMap;
+import gregtech.api.util.GTRecipe;
 import gregtech.common.tileentities.machines.MTEHatchCraftingInputME;
 import gtnhpatternupload.Net;
 import gtnhpatternupload.PatternUpload;
@@ -148,8 +152,8 @@ public final class Candidates {
             boolean anyMachine = false;
             for (Scored s : scored) anyMachine |= (s.flags & Net.Entry.RECIPE_MATCH) != 0;
             RecipeMap<?> wanted = recipeMapOf(category);
-            if (wanted == null) reply.note = NOTE_UNKNOWN_RECIPE;
-            else if (!anyMachine) reply.note = NOTE_NO_MACHINE;
+            // Машину нашли (по NEI или по содержимому шаблона) — пояснения не нужны.
+            if (!anyMachine) reply.note = wanted == null ? NOTE_UNKNOWN_RECIPE : NOTE_NO_MACHINE;
             // Есть подходящие машины — показываем только их; иначе все интерфейсы со свободным местом.
             if (anyMachine) scored.removeIf(s -> (s.flags & Net.Entry.RECIPE_MATCH) == 0);
             else scored.removeIf(s -> s.free == 0);
@@ -200,6 +204,8 @@ public final class Candidates {
         ItemStack pattern) {
         RecipeMap<?> wanted = recipeMapOf(category);
         ItemStack output = patternOutput(pattern, world);
+        // Рецепт не пришёл из NEI — проверим машины по их картам рецептов по содержимому шаблона.
+        PatternContents contents = wanted == null ? PatternContents.of(pattern, world) : null;
         List<Scored> out = new ArrayList<>();
         Set<IInterfaceViewable> seen = new HashSet<>();
         for (Class<? extends IInterfaceViewable> cls : AEApi.instance()
@@ -213,7 +219,7 @@ public final class Candidates {
                 IInventory inv = view.getPatterns();
                 if (inv == null) continue;
                 try {
-                    out.add(scoreOne(view, inv, wanted, nonConsumables, pattern, output));
+                    out.add(scoreOne(view, inv, wanted, nonConsumables, pattern, output, contents));
                 } catch (Throwable t) {
                     PatternUpload.LOG.warn("Skipping provider {}: {}", view.getName(), t.toString());
                 }
@@ -223,7 +229,7 @@ public final class Candidates {
     }
 
     private static Scored scoreOne(IInterfaceViewable view, IInventory inv, RecipeMap<?> wanted,
-        List<ItemStack> nonConsumables, ItemStack pattern, ItemStack output) {
+        List<ItemStack> nonConsumables, ItemStack pattern, ItemStack output, PatternContents contents) {
         Scored s = new Scored();
         s.view = view;
         s.icon = view.getDisplayRep() != null ? view.getDisplayRep() : view.getSelfRep();
@@ -268,8 +274,82 @@ public final class Candidates {
                     s.flags |= all ? Net.Entry.MOLD_MATCH : Net.Entry.MOLD_MISMATCH;
                 }
             }
+        } else if (contents != null && !contents.isEmpty()) {
+            // Категории нет: ищем настоящий рецепт GT из входов шаблона и того, что лежит в машине (форма, схема).
+            // Нашёлся рецепт с этим же результатом — машина подходит, и форма в ней правильная.
+            Collection<RecipeMap<?>> maps = machineRecipeMaps(view);
+            if (!maps.isEmpty()) {
+                List<ItemStack> held = machineHeldItems(view);
+                for (RecipeMap<?> map : maps) {
+                    if (contents.madeBy(map, held)) {
+                        s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
+                        break;
+                    }
+                }
+            }
         }
         return s;
+    }
+
+    /** Входы и основной выход шаблона в виде, понятном поиску рецептов GT. */
+    private static final class PatternContents {
+
+        final List<ItemStack> items = new ArrayList<>();
+        final List<FluidStack> fluids = new ArrayList<>();
+        ItemStack outItem;
+        FluidStack outFluid;
+
+        static PatternContents of(ItemStack pattern, World world) {
+            PatternContents pc = new PatternContents();
+            if (pattern == null || !(pattern.getItem() instanceof ICraftingPatternItem) || world == null) return pc;
+            try {
+                ICraftingPatternDetails d = ((ICraftingPatternItem) pattern.getItem())
+                    .getPatternForItem(pattern, world);
+                if (d == null) return pc;
+                for (IAEStack<?> st : d.getCondensedAEInputs()) {
+                    if (st instanceof IAEItemStack) pc.items.add(((IAEItemStack) st).getItemStack());
+                    else if (st instanceof IAEFluidStack) pc.fluids.add(((IAEFluidStack) st).getFluidStack());
+                }
+                IAEStack<?>[] outs = d.getCondensedAEOutputs();
+                if (outs != null && outs.length > 0) {
+                    if (outs[0] instanceof IAEItemStack) pc.outItem = ((IAEItemStack) outs[0]).getItemStack();
+                    else if (outs[0] instanceof IAEFluidStack) pc.outFluid = ((IAEFluidStack) outs[0]).getFluidStack();
+                }
+            } catch (Throwable t) {
+                PatternUpload.LOG.debug("Cannot decode pattern: {}", t.toString());
+            }
+            return pc;
+        }
+
+        boolean isEmpty() {
+            return (items.isEmpty() && fluids.isEmpty()) || (outItem == null && outFluid == null);
+        }
+
+        /** Есть ли в карте рецепт из этих входов (плюс то, что лежит в машине) с тем же результатом. */
+        boolean madeBy(RecipeMap<?> map, List<ItemStack> held) {
+            List<ItemStack> in = new ArrayList<>(items);
+            in.addAll(held);
+            try {
+                return map.findRecipeQuery()
+                    .items(in.toArray(new ItemStack[0]))
+                    .fluids(fluids.toArray(new FluidStack[0]))
+                    .dontCheckStackSizes(true)
+                    .findAll()
+                    .anyMatch(this::producedBy);
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+
+        private boolean producedBy(GTRecipe r) {
+            if (outItem != null && r.mOutputs != null) {
+                for (ItemStack o : r.mOutputs) if (o != null && o.isItemEqual(outItem)) return true;
+            }
+            if (outFluid != null && r.mFluidOutputs != null) {
+                for (FluidStack o : r.mFluidOutputs) if (o != null && o.isFluidEqual(outFluid)) return true;
+            }
+            return false;
+        }
     }
 
     // ------------------------------------------------------------------ извлечение старого шаблона
