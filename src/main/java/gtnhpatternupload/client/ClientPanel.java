@@ -164,7 +164,7 @@ public class ClientPanel {
             if (index < entries.size()) {
                 lastUploadName = displayName(entries.get(index));
                 Net.CH.sendToServer(new Net.Upload(token, index));
-                setStatus(I18n.format("gtnhpatternupload.status.uploading"), 0xAAAAAA, 3000);
+                setStatus(I18n.format("gtnhpatternupload.status.uploading"), 0x5A5A5A, 3000);
             }
         }
     }
@@ -188,19 +188,19 @@ public class ClientPanel {
         String name = lastUploadName != null ? lastUploadName : resolveName(msg.name, null);
         switch (msg.code) {
             case Net.Result.OK:
-                setStatus(I18n.format("gtnhpatternupload.result.ok", name), 0x55FF55, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.ok", name), 0x1E7A1E, 4000);
                 break;
             case Net.Result.FULL:
-                setStatus(I18n.format("gtnhpatternupload.result.full", name), 0xFF5555, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.full", name), 0xB00000, 4000);
                 break;
             case Net.Result.DENIED:
-                setStatus(I18n.format("gtnhpatternupload.result.denied"), 0xFF5555, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.denied"), 0xB00000, 4000);
                 break;
             case Net.Result.NO_PATTERN:
-                setStatus(I18n.format("gtnhpatternupload.result.nopattern"), 0xFF5555, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.nopattern"), 0xB00000, 4000);
                 break;
             default:
-                setStatus(I18n.format("gtnhpatternupload.result.gone"), 0xFF5555, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.gone"), 0xB00000, 4000);
                 lastKey = null; // запросить список заново
         }
     }
@@ -319,25 +319,59 @@ public class ClientPanel {
         return e.suffix == null || e.suffix.isEmpty() ? e.name : e.name + " " + e.suffix;
     }
 
-    private static String flagsLine(Net.Entry e, boolean long_) {
+    /**
+     * Строка признаков. В строке списка (светлый фон AE2) — тёмные цвета, в подсказке (тёмный фон) — яркие.
+     */
+    private static String flagsLine(Net.Entry e, boolean tooltip) {
+        String good = tooltip ? "§a" : "§2", bad = tooltip ? "§c" : "§4", warn = tooltip ? "§e" : "§6",
+            dim = tooltip ? "§7" : "§8";
         StringBuilder sb = new StringBuilder();
-        if ((e.flags & Net.Entry.MOLD_MATCH) != 0) sb.append("§a✔ ")
+        if ((e.flags & Net.Entry.MOLD_MATCH) != 0) sb.append(good)
+            .append("✔ ")
             .append(I18n.format("gtnhpatternupload.flag.mold"))
             .append("  ");
-        else if ((e.flags & Net.Entry.MOLD_MISMATCH) != 0) sb.append("§c✘ ")
+        else if ((e.flags & Net.Entry.MOLD_MISMATCH) != 0) sb.append(bad)
+            .append("✘ ")
             .append(I18n.format("gtnhpatternupload.flag.othermold"))
             .append("  ");
-        else if ((e.flags & Net.Entry.RECIPE_MATCH) != 0) sb.append("§a✔ ")
+        else if ((e.flags & Net.Entry.RECIPE_MATCH) != 0) sb.append(good)
+            .append("✔ ")
             .append(I18n.format("gtnhpatternupload.flag.machine"))
             .append("  ");
-        if ((e.flags & Net.Entry.HAS_SAME) != 0) sb.append("§e")
+        if ((e.flags & Net.Entry.HAS_SAME) != 0) sb.append(warn)
             .append(I18n.format("gtnhpatternupload.flag.same"))
             .append("  ");
-        if (e.free == 0) sb.append("§c")
+        if (e.free == 0) sb.append(bad)
             .append(I18n.format("gtnhpatternupload.flag.full"));
-        else sb.append("§7")
-            .append(I18n.format(long_ ? "gtnhpatternupload.flag.free.long" : "gtnhpatternupload.flag.free", e.free));
+        else sb.append(dim)
+            .append(I18n.format(tooltip ? "gtnhpatternupload.flag.free.long" : "gtnhpatternupload.flag.free", e.free));
         return sb.toString();
+    }
+
+    // ------------------------------------------------------------------ отрисовка в стиле AE2 (окно Minecraft)
+
+    private static final int GUI_FILL = 0xFFC6C6C6;
+    private static final int GUI_TEXT = 0x404040;
+    private static final int GUI_TEXT_DIM = 0x5A5A5A;
+
+    /** Окно как у интерфейсов AE2: чёрный контур, светлая фаска сверху-слева, тёмная снизу-справа. */
+    private static void drawWindow(int x, int y, int w, int h) {
+        Gui.drawRect(x + 1, y, x + w - 1, y + 1, 0xFF000000);
+        Gui.drawRect(x + 1, y + h - 1, x + w - 1, y + h, 0xFF000000);
+        Gui.drawRect(x, y + 1, x + 1, y + h - 1, 0xFF000000);
+        Gui.drawRect(x + w - 1, y + 1, x + w, y + h - 1, 0xFF000000);
+        Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, GUI_FILL);
+        Gui.drawRect(x + 1, y + 1, x + w - 3, y + 3, 0xFFFFFFFF);
+        Gui.drawRect(x + 1, y + 1, x + 3, y + h - 3, 0xFFFFFFFF);
+        Gui.drawRect(x + 3, y + h - 3, x + w - 1, y + h - 1, 0xFF555555);
+        Gui.drawRect(x + w - 3, y + 3, x + w - 1, y + h - 1, 0xFF555555);
+    }
+
+    /** Утопленный слот 18×18, как ячейки AE2. */
+    private static void drawSlot(int x, int y) {
+        Gui.drawRect(x, y, x + 18, y + 18, 0xFF373737);
+        Gui.drawRect(x + 1, y + 1, x + 18, y + 18, 0xFFFFFFFF);
+        Gui.drawRect(x + 1, y + 1, x + 17, y + 17, 0xFF8B8B8B);
     }
 
     private String noteText() {
@@ -387,24 +421,34 @@ public class ClientPanel {
             this.visible = ClientPanel.this.visible;
             if (!visible) return;
             FontRenderer fr = mc.fontRenderer;
-            drawRect(xPosition, yPosition, xPosition + width, yPosition + height, 0xE0101420);
-            drawRect(xPosition, yPosition, xPosition + width, yPosition + 1, 0xFF3D7BFF);
-            fr.drawStringWithShadow(I18n.format("gtnhpatternupload.title"), xPosition + 6, yPosition + 8, 0xFFFFFF);
+            drawWindow(xPosition, yPosition, width, height);
+            // Заголовок — как «Терминал шаблонов» у AE2: тёмно-серый, без тени.
+            fr.drawString(I18n.format("gtnhpatternupload.title"), xPosition + 8, yPosition + 8, GUI_TEXT);
             if (entries.size() > ROWS) {
                 String page = (scroll + 1) + "-" + Math.min(scroll + ROWS, entries.size()) + "/" + entries.size();
-                fr.drawString(page, xPosition + width - 6 - fr.getStringWidth(page), yPosition + 8, 0x888888);
+                fr.drawString(page, xPosition + width - 8 - fr.getStringWidth(page), yPosition + 8, GUI_TEXT_DIM);
+            }
+            // Область списка — утопленная, как поле терминала.
+            int shown = Math.min(entries.size(), ROWS);
+            if (shown > 0) {
+                int lx = xPosition + 4, ly = yPosition + HEADER - 2, lw = width - 8, lh = shown * ROW_H + 2;
+                drawRect(lx, ly, lx + lw, ly + lh, 0xFF8B8B8B);
+                drawRect(lx, ly, lx + lw, ly + 1, 0xFF373737);
+                drawRect(lx, ly, lx + 1, ly + lh, 0xFF373737);
+                drawRect(lx + 1, ly + lh - 1, lx + lw, ly + lh, 0xFFFFFFFF);
+                drawRect(lx + lw - 1, ly + 1, lx + lw, ly + lh, 0xFFFFFFFF);
             }
             String n = noteText();
-            int textY = yPosition + HEADER + (entries.isEmpty() ? 4 : Math.min(entries.size(), ROWS) * ROW_H + 2);
+            int textY = yPosition + HEADER + (shown == 0 ? 2 : shown * ROW_H + 4);
             if (!n.isEmpty()) {
-                List<String> wrapped = fr.listFormattedStringToWidth(n, width - 12);
+                List<String> wrapped = fr.listFormattedStringToWidth(n, width - 16);
                 for (int i = 0; i < wrapped.size() && textY + i * 10 < yPosition + height - FOOTER; i++) {
-                    fr.drawString(wrapped.get(i), xPosition + 6, textY + i * 10, 0xAAAAAA);
+                    fr.drawString(wrapped.get(i), xPosition + 8, textY + i * 10, GUI_TEXT_DIM);
                 }
             }
             if (System.currentTimeMillis() < statusUntil && !status.isEmpty()) {
                 String s = fr.trimStringToWidth(status, width - 60);
-                fr.drawStringWithShadow(s, xPosition + 6, yPosition + height - FOOTER + 7, statusColor);
+                fr.drawString(s, xPosition + 8, yPosition + height - FOOTER + 7, statusColor);
             }
         }
 
@@ -433,11 +477,20 @@ public class ClientPanel {
             if (!visible || scroll + slot >= entries.size()) return;
             Net.Entry e = entries.get(scroll + slot);
             boolean hover = hovered(mx, my);
-            int bg = (e.flags & Net.Entry.MOLD_MATCH) != 0 ? 0xC0183A24
-                : (e.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 0xC03A1818
-                    : (e.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0xC01C2A3A : 0xC0202020;
-            if (hover) bg = (bg & 0x00FFFFFF) | 0xF0000000 | 0x202020;
-            drawRect(xPosition, yPosition, xPosition + width, yPosition + height, bg);
+            // Строка — светлая плашка на утопленном поле; подходящие помечены цветной полоской слева.
+            drawRect(xPosition, yPosition, xPosition + width, yPosition + height, hover ? 0xFFDADADA : GUI_FILL);
+            drawRect(xPosition, yPosition + height, xPosition + width, yPosition + height + 1, 0xFF8B8B8B);
+            int stripe = (e.flags & Net.Entry.MOLD_MATCH) != 0 ? 0xFF2E9E2E
+                : (e.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 0xFFC03030
+                    : (e.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0xFF4A7FC0 : 0xFF8B8B8B;
+            drawRect(xPosition, yPosition, xPosition + 2, yPosition + height, stripe);
+            drawSlot(xPosition + 4, yPosition + (height - 18) / 2);
+            if (hover) drawRect(
+                xPosition + 5,
+                yPosition + (height - 18) / 2 + 1,
+                xPosition + 21,
+                yPosition + (height - 18) / 2 + 17,
+                0x80FFFFFF);
             if (e.icon != null) {
                 GL11.glPushMatrix();
                 RenderHelper.enableGUIStandardItemLighting();
@@ -446,19 +499,20 @@ public class ClientPanel {
                     mc.fontRenderer,
                     mc.getTextureManager(),
                     e.icon,
-                    xPosition + 2,
-                    yPosition + 3);
+                    xPosition + 5,
+                    yPosition + (height - 18) / 2 + 1);
                 RenderHelper.disableStandardItemLighting();
                 GL11.glDisable(GL11.GL_LIGHTING);
                 GL11.glPopMatrix();
             }
             FontRenderer fr = mc.fontRenderer;
-            int tx = xPosition + 22, tw = width - 25;
-            fr.drawStringWithShadow(fr.trimStringToWidth(e.name, tw), tx, yPosition + 2, 0xFFFFFF);
+            int tx = xPosition + 26, tw = width - 29;
+            fr.drawString(fr.trimStringToWidth(e.name, tw), tx, yPosition + 2, GUI_TEXT);
             if (e.suffix != null && !e.suffix.isEmpty()) {
-                fr.drawString(fr.trimStringToWidth(e.suffix, tw), tx, yPosition + 12, 0xC8C8C8);
+                // Подписи CRIB бывают цветными (§); на светлом фоне их цвета не трогаем, только базовый тёмный.
+                fr.drawString(fr.trimStringToWidth(e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
             }
-            fr.drawString(fr.trimStringToWidth(flagsLine(e, false), tw), tx, yPosition + 22, 0xAAAAAA);
+            fr.drawString(fr.trimStringToWidth(flagsLine(e, false), tw), tx, yPosition + 22, GUI_TEXT_DIM);
         }
     }
 }
