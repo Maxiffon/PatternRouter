@@ -80,6 +80,10 @@ public class ClientPanel {
     private final List<ConflictRow> confRows = new ArrayList<>();
     private final List<GuiButton> extractButtons = new ArrayList<>();
     private GuiButton up, down;
+    /** Title-bar arrow that moves the panel to the other side of the terminal. */
+    private GuiButton side;
+    /** Where layoutHorizontal() actually put the panel. */
+    private boolean onRight = true;
     // Block positions computed in relayout()
     private int listY, noteY, confY;
 
@@ -143,6 +147,8 @@ public class ClientPanel {
         down = new GuiButton(BASE_ID + 101, 0, 0, 20, 16, "▼");
         e.buttonList.add(up);
         e.buttonList.add(down);
+        side = new GuiButton(BASE_ID + 102, 0, 0, 14, 14, "");
+        e.buttonList.add(side);
         relayout();
     }
 
@@ -190,6 +196,17 @@ public class ClientPanel {
                 drawTooltip(tip, e.mouseX, e.mouseY);
             }
         }
+        if (side != null && side.visible
+            && e.mouseX >= side.xPosition
+            && e.mouseY >= side.yPosition
+            && e.mouseX < side.xPosition + side.width
+            && e.mouseY < side.yPosition + side.height) {
+            drawTooltip(
+                Collections.singletonList(
+                    I18n.format(onRight ? "patternrouter.tip.side.left" : "patternrouter.tip.side.right")),
+                e.mouseX,
+                e.mouseY);
+        }
     }
 
     @SubscribeEvent
@@ -200,7 +217,11 @@ public class ClientPanel {
         e.setCanceled(true);
         if (e.button == up) scroll--;
         else if (e.button == down) scroll++;
-        else if (e.button instanceof RowButton) {
+        else if (e.button == side) {
+            Config.setPanelSide(onRight ? "left" : "right");
+            layoutHorizontal();
+            relayout();
+        } else if (e.button instanceof RowButton) {
             int index = scroll + ((RowButton) e.button).slot;
             if (index < entries.size()) {
                 lastActionName = displayName(entries.get(index));
@@ -286,6 +307,7 @@ public class ClientPanel {
         boolean preferLeft = "left".equalsIgnoreCase(Config.panelSide);
         boolean useRight = preferLeft ? leftSpace < MIN_W && rightSpace >= leftSpace
             : rightSpace >= MIN_W || rightSpace >= leftSpace;
+        onRight = useRight;
         if (useRight) {
             pw = Math.max(MIN_W, Math.min(MAX_W, rightSpace));
             px = rightX;
@@ -355,6 +377,10 @@ public class ClientPanel {
         up.visible = down.visible = visible && entries.size() > ROWS;
         up.enabled = scroll > 0;
         down.enabled = scroll < maxScroll;
+        side.xPosition = px + pw - 5 - side.width;
+        side.yPosition = py + 4;
+        side.displayString = onRight ? "◀" : "▶";
+        side.visible = visible;
     }
 
     private int field(String dev, String srg) {
@@ -598,10 +624,18 @@ public class ClientPanel {
                 drawItem(mc, currentPattern, xPosition + 6, yPosition + 3);
                 tx = xPosition + 27;
             }
-            fr.drawString(I18n.format("patternrouter.title"), tx, yPosition + 7, GUI_TEXT);
-            if (entries.size() > ROWS) {
-                String page = (scroll + 1) + "-" + Math.min(scroll + ROWS, entries.size()) + "/" + entries.size();
-                fr.drawString(page, xPosition + width - 8 - fr.getStringWidth(page), yPosition + 7, GUI_TEXT_DIM);
+            String page = entries.size() > ROWS
+                ? (scroll + 1) + "-" + Math.min(scroll + ROWS, entries.size()) + "/" + entries.size()
+                : "";
+            int titleRoom = xPosition + width - 24 - (page.isEmpty() ? 0 : fr.getStringWidth(page) + 4) - tx;
+            fr.drawString(
+                fr.trimStringToWidth(I18n.format("patternrouter.title"), titleRoom),
+                tx,
+                yPosition + 7,
+                GUI_TEXT);
+            if (!page.isEmpty()) {
+                // Left of the side arrow in the title bar.
+                fr.drawString(page, xPosition + width - 24 - fr.getStringWidth(page), yPosition + 7, GUI_TEXT_DIM);
             }
             int shown = Math.min(entries.size(), ROWS);
             if (shown > 0) drawInset(xPosition + 4, listY - 1, width - 8, shown * ROW_H + 1);

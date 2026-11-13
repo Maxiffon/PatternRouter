@@ -28,3 +28,5 @@ patternrouter.tip.extract=Take the old pattern out of this machine into your inv
 patternrouter.result.extracted=Old pattern moved to inventory: %s
 patternrouter.result.invfull=Inventory full — pattern not extracted
 patternrouter.note.unformed=No machine in the network runs this recipe. Some hatches belong to no formed multiblock: check the structure.
+patternrouter.tip.side.left=Move the panel to the left
+patternrouter.tip.side.right=Move the panel to the right

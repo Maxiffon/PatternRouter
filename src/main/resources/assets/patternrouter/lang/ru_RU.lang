@@ -28,3 +28,5 @@ patternrouter.tip.extract=Вынуть старый шаблон из этой �
 patternrouter.result.extracted=Старый шаблон в инвентаре: %s
 patternrouter.result.invfull=Инвентарь полон — шаблон не извлечён
 patternrouter.note.unformed=Машин с этим рецептом в сети нет. Есть люки без собранной машины — проверьте структуру многоблока.
+patternrouter.tip.side.left=Переместить панель влево
+patternrouter.tip.side.right=Переместить панель вправо
