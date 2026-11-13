@@ -7,11 +7,13 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
 
 ## Features
 - **Machine match by recipe map**, not by name. Renamed interfaces still work.
-- **Mold / circuit / lens check.**
-  - Rows are marked *fits* when the machine holds the required non-consumed item, *doesn't fit* when it doesn't.
-  - Where it looks: CRIB manual and circuit slots, the single-block machine next to an ME interface, or an input bus.
-- **Works without NEI.** If the pattern was not transferred from NEI, the server runs a real GT recipe lookup with the
-  pattern inputs plus what each machine holds.
+- **Mold / circuit / lens check** with the real GT recipe lookup: pattern inputs plus what the machine holds (CRIB
+  manual and circuit slots, the single-block machine next to an ME interface, or the input bus).
+  - Any lens (mold, …) that gives the same result *fits*.
+  - A machine holding a circuit/mold/lens the recipe doesn't use is hidden when another machine fits, otherwise marked
+    *doesn't fit*.
+  - Works without NEI too.
+- **Unformed multiblocks** are reported ("check the structure") instead of silently missing.
 - **Conflicts.** Shows patterns elsewhere in the network that already produce the same output, with an *Extract*
   button that moves the old pattern to your inventory.
 - **Respects AE2 security** (build permission).
@@ -19,9 +21,11 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
 - **AE2 GUIs are not patched.** The panel uses Forge GUI events only.
 
 ## Requirements
-Client **and** server. Needs AE2 (GTNH fork), GT5-Unofficial and NotEnoughItems. Built against GTNH 2.9.0-RC-2.
+Client **and** server. Needs AE2 (GTNH fork), GT5-Unofficial and NotEnoughItems — all already in GTNH. Built against
+GTNH 2.9.0-RC-2; tested in single player and on the official 2.9.0-RC-2 dedicated server pack.
 
-If only one side has the mod, players can still connect; the panel just finds nothing.
+Install: put `patternrouter-<version>.jar` (not `-dev` / `-sources`) into `mods`. If only one side has the mod, players
+can still connect; the panel just finds nothing.
 
 ## Config
 `config/patternrouter.cfg`: `panelSide = right | left`.
