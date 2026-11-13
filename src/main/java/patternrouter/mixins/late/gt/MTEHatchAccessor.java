@@ -7,7 +7,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import gregtech.api.metatileentity.implementations.MTEHatch;
 
-/** Контроллер многоблока сам записывает свои координаты в люк при проверке структуры. */
+/** The multiblock controller writes its coordinates into the hatch during the structure check. */
 @Mixin(value = MTEHatch.class, remap = false)
 public interface MTEHatchAccessor {
 

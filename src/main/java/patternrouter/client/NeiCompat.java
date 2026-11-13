@@ -5,7 +5,7 @@ import net.minecraft.client.gui.inventory.GuiContainer;
 import codechicken.nei.api.API;
 import codechicken.nei.api.INEIGuiAdapter;
 
-/** Просим NEI не рисовать список предметов под нашей панелью и не перехватывать там клики. */
+/** Ask NEI not to draw its item list under the panel or take clicks there. */
 public final class NeiCompat {
 
     private NeiCompat() {}

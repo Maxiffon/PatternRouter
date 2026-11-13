@@ -16,7 +16,7 @@ import cpw.mods.fml.relauncher.Side;
 import io.netty.buffer.ByteBuf;
 import patternrouter.server.Candidates;
 
-/** Сетевые сообщения: запрос списка, список, загрузка, результат. */
+/** Network messages: list request, list, upload, result. */
 public final class Net {
 
     public static SimpleNetworkWrapper CH;
@@ -32,7 +32,7 @@ public final class Net {
         CH.registerMessage(ExtractOld.Handler.class, ExtractOld.class, 4, Side.SERVER);
     }
 
-    /** Вынуть старый шаблон на тот же результат (конфликт номер index) в инвентарь игрока. */
+    /** Move the old pattern with the same output (conflict #index) into the player inventory. */
     public static class ExtractOld implements IMessage {
 
         public int token;
@@ -68,9 +68,9 @@ public final class Net {
         }
     }
 
-    // ---------- клиент → сервер ----------
+    // ---------- client -> server ----------
 
-    /** Найти машины для шаблона в выходном слоте открытого терминала шаблонов. */
+    /** Find machines for the pattern in the output slot of the open pattern terminal. */
     public static class Request implements IMessage {
 
         public String category = "";
@@ -112,7 +112,7 @@ public final class Net {
         }
     }
 
-    /** Положить шаблон в кандидата с номером index из списка token. */
+    /** Put the pattern into candidate #index of list #token. */
     public static class Upload implements IMessage {
 
         public int token;
@@ -148,15 +148,15 @@ public final class Net {
         }
     }
 
-    // ---------- сервер → клиент ----------
+    // ---------- server -> client ----------
 
-    /** Одна строка списка. */
+    /** One list row. */
     public static class Entry {
 
-        public static final int RECIPE_MATCH = 1; // машина делает рецепты этой категории
-        public static final int MOLD_MATCH = 2; // нужные формы/схемы лежат в машине
-        public static final int MOLD_MISMATCH = 4; // машина та, но формы не те
-        public static final int HAS_SAME = 8; // уже есть шаблон на тот же результат
+        public static final int RECIPE_MATCH = 1; // the machine runs recipes of this category
+        public static final int MOLD_MATCH = 2; // the required molds/circuits are in the machine
+        public static final int MOLD_MISMATCH = 4; // right machine, wrong mold/circuit
+        public static final int HAS_SAME = 8; // already holds a pattern with the same output
 
         public ItemStack icon;
         public String name = "";
@@ -168,10 +168,10 @@ public final class Net {
     public static class CandidateList implements IMessage {
 
         public int token;
-        /** 0 — всё хорошо; иначе код причины пустого списка (см. Candidates.NOTE_*). */
+        /** 0 = fine; otherwise why the list is empty (see Candidates.NOTE_*). */
         public int note;
         public List<Entry> entries = new ArrayList<>();
-        /** Уже существующие шаблоны на тот же результат (где лежат). */
+        /** Existing patterns with the same output (where they are). */
         public List<Entry> conflicts = new ArrayList<>();
 
         @Override

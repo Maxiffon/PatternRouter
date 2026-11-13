@@ -35,26 +35,26 @@ import patternrouter.Net;
 import patternrouter.server.Candidates;
 
 /**
- * Боковая панель у терминала шаблонов в стиле окон AE2. Всё на событиях Forge и обычных кнопках: интерфейс AE2 не
- * патчится. NEI уступает место под панелью через INEIGuiAdapter (см. NeiCompat).
+ * Pattern terminal side panel in AE2 window style. Built from Forge GUI events and plain buttons; AE2 GUIs are not
+ * patched. NEI makes room for the panel via INEIGuiAdapter (see NeiCompat).
  */
 public class ClientPanel {
 
     private static final int MAX_W = 204;
     private static final int MIN_W = 150;
-    /** Отступ справа от терминала: колонка ячеек вида/улучшений AE2. */
+    /** Gap right of the terminal: AE2 view cell / upgrade column. */
     private static final int RIGHT_GAP = 28;
-    /** Отступ слева от терминала: колонка кнопок сортировки/вида AE2. */
+    /** Gap left of the terminal: AE2 sort / view button column. */
     private static final int LEFT_GAP = 54;
-    /** Строка кандидата: имя машины, подпись CRIB (форма/схема), признаки. */
+    /** Candidate row: machine name, CRIB caption (mold/circuit), flags. */
     private static final int ROW_H = 34;
     private static final int ROWS = 5;
-    /** Строка конфликта: машина со старым шаблоном и кнопка «Извлечь». */
+    /** Conflict row: machine with the old pattern and an Extract button. */
     private static final int CONF_H = 24;
     private static final int CONF_ROWS = 3;
     private static final int HEADER = 22;
     private static final int FOOTER = 22;
-    /** Текущая высота подвала (строка состояния может переноситься). */
+    /** Current footer height (the status line may wrap). */
     private int footer = FOOTER;
 
     private int statusWidth() {
@@ -71,7 +71,7 @@ public class ClientPanel {
 
     private final Queue<Runnable> tasks = new ConcurrentLinkedQueue<>();
 
-    // Терминал и раскладка
+    // Terminal and layout
     private GuiContainer gui;
     private int px, py, pw, ph;
     private boolean visible;
@@ -80,10 +80,10 @@ public class ClientPanel {
     private final List<ConflictRow> confRows = new ArrayList<>();
     private final List<GuiButton> extractButtons = new ArrayList<>();
     private GuiButton up, down;
-    // Вычисленные в relayout() координаты блоков
+    // Block positions computed in relayout()
     private int listY, noteY, confY;
 
-    // Состояние
+    // State
     private String lastKey;
     private int token;
     private List<Net.Entry> entries = Collections.emptyList();
@@ -95,14 +95,14 @@ public class ClientPanel {
     private int statusColor;
     private long statusUntil;
     private String lastActionName;
-    /** Шаблон, для которого показан список (иконка в заголовке). */
+    /** Pattern the list is shown for (title icon). */
     private ItemStack currentPattern;
 
     public void post(Runnable r) {
         tasks.add(r);
     }
 
-    // ------------------------------------------------------------------ события
+    // ------------------------------------------------------------------ events
 
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent e) {
@@ -217,7 +217,7 @@ public class ClientPanel {
         }
     }
 
-    // ------------------------------------------------------------------ ответы сервера
+    // ------------------------------------------------------------------ server replies
 
     public void onCandidates(Net.CandidateList msg) {
         if (gui == null) return;
@@ -240,7 +240,7 @@ public class ClientPanel {
                 break;
             case Net.Result.EXTRACTED:
                 setStatus(I18n.format("patternrouter.result.extracted", name), good, 4000);
-                lastKey = null; // обновить список конфликтов
+                lastKey = null; // refresh the conflict list
                 break;
             case Net.Result.INV_FULL:
                 setStatus(I18n.format("patternrouter.result.invfull"), bad, 4000);
@@ -256,25 +256,25 @@ public class ClientPanel {
                 break;
             default:
                 setStatus(I18n.format("patternrouter.result.gone"), bad, 4000);
-                lastKey = null; // запросить список заново
+                lastKey = null; // request the list again
         }
     }
 
-    // ------------------------------------------------------------------ для NEI
+    // ------------------------------------------------------------------ NEI
 
     public boolean overlaps(GuiContainer g, int x, int y, int w, int h) {
         return g == gui && visible && x < px + pw && x + w > px && y < py + ph && y + h > py;
     }
 
-    // ------------------------------------------------------------------ раскладка
+    // ------------------------------------------------------------------ layout
 
     private static boolean isPatternTerm(GuiScreen g) {
         return g instanceof GuiContainer && ((GuiContainer) g).inventorySlots instanceof ContainerPatternTerm;
     }
 
     /**
-     * Ширина и сторона. Справа — сразу за колонкой ячеек AE2, ширина подстраивается под свободное место (NEI уступает
-     * его). Слева — только если справа совсем тесно, и тогда за колонкой кнопок AE2, чтобы ничего не перекрыть.
+     * Width and side. Right: just past the AE2 cell column, width fits the free space (NEI makes
+     * room). Left only if the right side is too narrow, placed past the AE2 button column so nothing is covered.
      */
     private void layoutHorizontal() {
         int left = field("guiLeft", "field_147003_i");
@@ -295,7 +295,7 @@ public class ClientPanel {
         }
     }
 
-    /** Вертикальная раскладка по содержимому: список, пояснение, конфликты, строка состояния. */
+    /** Vertical layout by content: list, note, conflicts, status line. */
     private void relayout() {
         int top = field("guiTop", "field_147009_r");
         int shown = Math.min(entries.size(), ROWS);
@@ -311,7 +311,7 @@ public class ClientPanel {
         int confBlock = confShown == 0 ? 0 : 14 + confShown * CONF_H + (conflicts.size() > CONF_ROWS ? 10 : 0) + 4;
 
         int body = shown * ROW_H + (shown > 0 ? 4 : 0) + (noteLines > 0 ? noteLines * 10 + 4 : 0) + confBlock;
-        // Подвал растёт под длинную строку состояния (переносим, а не обрезаем).
+        // The footer grows for a long status line (wrapped, not cut).
         footer = FOOTER;
         if (System.currentTimeMillis() < statusUntil && !status.isEmpty()) {
             int lines = fr.listFormattedStringToWidth(status, statusWidth())
@@ -362,7 +362,7 @@ public class ClientPanel {
         return v == null ? 0 : v;
     }
 
-    // ------------------------------------------------------------------ логика
+    // ------------------------------------------------------------------ logic
 
     private ItemStack findPattern() {
         for (Object o : gui.inventorySlots.inventorySlots) {
@@ -423,8 +423,8 @@ public class ClientPanel {
     }
 
     /**
-     * Имя для показа. Сервер шлёт «сырое» имя: переименование игрока или ключ перевода машины (у GT это ключ без
-     * «.name», например gt.blockmachines.industrialextruder). Если ключ не переводится — берём имя предмета-иконки.
+     * Display name. The server sends the raw name: a player rename or the machine translation key (GT keys lack
+     * ".name", e.g. gt.blockmachines.industrialextruder). If the key does not translate, use the icon item name.
      */
     private static String resolveName(String raw, ItemStack icon) {
         String t = translate(raw);
@@ -437,7 +437,7 @@ public class ClientPanel {
         return t;
     }
 
-    /** Подпись CRIB (форма, схема, номер) приходит как JSON и переводится на языке игрока. */
+    /** The CRIB caption (mold, circuit, number) arrives as JSON and is translated client-side. */
     private static String parseSuffix(String json) {
         if (json == null || json.isEmpty()) return "";
         try {
@@ -454,7 +454,7 @@ public class ClientPanel {
         return e.suffix == null || e.suffix.isEmpty() ? e.name : e.name + " " + e.suffix;
     }
 
-    /** Строка признаков. В строке списка (светлый фон AE2) — тёмные цвета, в подсказке (тёмный фон) — яркие. */
+    /** Flags line: dark colors in the list (light AE2 background), bright ones in tooltips (dark background). */
     private static String flagsLine(Net.Entry e, boolean tooltip) {
         String good = tooltip ? "§a" : "§2", bad = tooltip ? "§c" : "§4", warn = tooltip ? "§e" : "§6",
             dim = tooltip ? "§7" : "§8";
@@ -499,9 +499,9 @@ public class ClientPanel {
         }
     }
 
-    // ------------------------------------------------------------------ отрисовка в стиле AE2 (окно Minecraft)
+    // ------------------------------------------------------------------ AE2-style drawing (Minecraft window)
 
-    /** Окно как у интерфейсов AE2: чёрный контур, светлая фаска сверху-слева, тёмная снизу-справа. */
+    /** AE2-style window: black outline, light bevel top-left, dark bevel bottom-right. */
     private static void drawWindow(int x, int y, int w, int h) {
         Gui.drawRect(x + 1, y, x + w - 1, y + 1, 0xFF000000);
         Gui.drawRect(x + 1, y + h - 1, x + w - 1, y + h, 0xFF000000);
@@ -514,7 +514,7 @@ public class ClientPanel {
         Gui.drawRect(x + w - 3, y + 3, x + w - 1, y + h - 1, 0xFF555555);
     }
 
-    /** Утопленное поле (как область слотов в терминале). */
+    /** Inset area (like the slot area of a terminal). */
     private static void drawInset(int x, int y, int w, int h) {
         Gui.drawRect(x, y, x + w, y + h, 0xFF8B8B8B);
         Gui.drawRect(x, y, x + w, y + 1, 0xFF373737);
@@ -523,7 +523,7 @@ public class ClientPanel {
         Gui.drawRect(x + w - 1, y + 1, x + w, y + h, 0xFFFFFFFF);
     }
 
-    /** Выпуклая плитка: светлая фаска сверху-слева, тень снизу-справа; нажатая — наоборот. */
+    /** Raised tile: light bevel top-left, shadow bottom-right; inverted when pressed. */
     private static void drawRaised(int x, int y, int w, int h, int fill, boolean pressed) {
         int hi = pressed ? 0xFF555555 : 0xFFFFFFFF;
         int lo = pressed ? 0xFFFFFFFF : 0xFF555555;
@@ -535,14 +535,14 @@ public class ClientPanel {
         Gui.drawRect(x + w - 2, y + 2, x + w - 1, y + h - 1, lo);
     }
 
-    /** Мягкая тень под окном, чтобы панель «висела» над экраном. */
+    /** Soft drop shadow so the panel floats above the screen. */
     private static void drawShadow(int x, int y, int w, int h) {
         Gui.drawRect(x + 4, y + h, x + w + 2, y + h + 3, 0x50000000);
         Gui.drawRect(x + w, y + 4, x + w + 3, y + h + 3, 0x50000000);
         Gui.drawRect(x + 3, y + h, x + w + 1, y + h + 1, 0x30000000);
     }
 
-    /** Утопленный слот 18×18, как ячейки AE2. */
+    /** Inset 18x18 slot like AE2 cells. */
     private static void drawSlot(int x, int y) {
         Gui.drawRect(x, y, x + 18, y + 18, 0xFF373737);
         Gui.drawRect(x + 1, y + 1, x + 18, y + 18, 0xFFFFFFFF);
@@ -573,9 +573,9 @@ public class ClientPanel {
         GL11.glEnable(GL11.GL_DEPTH_TEST);
     }
 
-    // ------------------------------------------------------------------ кнопки
+    // ------------------------------------------------------------------ buttons
 
-    /** Окно панели, заголовок, пояснение, заголовок конфликтов, строка состояния. Рисуется первым. */
+    /** Panel window, title, note, conflict header, status line. Drawn first. */
     private class Background extends GuiButton {
 
         Background(int id) {
@@ -589,7 +589,7 @@ public class ClientPanel {
             FontRenderer fr = mc.fontRenderer;
             drawShadow(xPosition, yPosition, width, height);
             drawWindow(xPosition, yPosition, width, height);
-            // Заголовок: шаблон, который загружаем, в слоте + надпись.
+            // Title: the pattern being uploaded in a slot, plus the caption.
             int tx = xPosition + 8;
             if (currentPattern != null) {
                 drawSlot(xPosition + 5, yPosition + 2);
@@ -640,7 +640,7 @@ public class ClientPanel {
         }
     }
 
-    /** Строка кандидата: слот с иконкой машины, имя, подпись CRIB, признаки. */
+    /** Candidate row: machine icon slot, name, CRIB caption, flags. */
     private class RowButton extends GuiButton {
 
         final int slot;
@@ -660,7 +660,7 @@ public class ClientPanel {
             Net.Entry e = entries.get(scroll + slot);
             boolean hover = hovered(mx, my);
             boolean pressed = hover && org.lwjgl.input.Mouse.isButtonDown(0);
-            // Выпуклая плитка; при наведении — голубоватая подсветка, как выделение в AE2.
+            // Raised tile; bluish highlight on hover like AE2 selection.
             drawRaised(xPosition + 1, yPosition + 1, width - 2, height - 2, hover ? 0xFFD3DCE8 : GUI_FILL, pressed);
             int stripe = (e.flags & Net.Entry.MOLD_MATCH) != 0 ? 0xFF2E9E2E
                 : (e.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 0xFFC03030
@@ -681,7 +681,7 @@ public class ClientPanel {
         }
     }
 
-    /** Строка конфликта: машина, где уже есть шаблон на этот результат. Кнопка «Извлечь» — отдельная. */
+    /** Conflict row: machine that already holds a pattern for this output. The Extract button is separate. */
     private class ConflictRow extends GuiButton {
 
         final int slot;

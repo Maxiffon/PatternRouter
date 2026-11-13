@@ -56,21 +56,21 @@ import patternrouter.PatternRouter;
 import patternrouter.mixins.late.gt.MTEHatchAccessor;
 
 /**
- * Серверная часть: ищет в ME-сети открытого терминала шаблонов интерфейсы и CRIB, подходящие под рецепт, и кладёт
- * шаблон в выбранный.
+ * Server side: finds interfaces and CRIBs in the pattern terminal's ME network that fit the recipe and puts
+ * the pattern into the chosen one.
  */
 public final class Candidates {
 
     public static final int NOTE_NONE = 0;
-    public static final int NOTE_NO_PATTERN = 1; // в выходном слоте нет закодированного шаблона
-    public static final int NOTE_NO_GRID = 2; // терминал не в сети
-    public static final int NOTE_DENIED = 3; // нет права строить в этой сети
-    public static final int NOTE_NO_MACHINE = 4; // подходящих машин нет, показываем все интерфейсы
-    public static final int NOTE_UNKNOWN_RECIPE = 5; // рецепт не из GregTech или не через NEI
+    public static final int NOTE_NO_PATTERN = 1; // no encoded pattern in the output slot
+    public static final int NOTE_NO_GRID = 2; // terminal is not on a network
+    public static final int NOTE_DENIED = 3; // no build permission in this network
+    public static final int NOTE_NO_MACHINE = 4; // no matching machine, showing all interfaces
+    public static final int NOTE_UNKNOWN_RECIPE = 5; // not a GT recipe, or not transferred from NEI
 
     private static final int MAX_ENTRIES = 40;
 
-    /** Последний выданный игроку список: по номеру строки находим, куда класть. */
+    /** Last list sent to the player: maps a row index to its target. */
     private static final class Session {
 
         final int token;
@@ -87,7 +87,7 @@ public final class Candidates {
         }
     }
 
-    /** Уже существующий шаблон на тот же результат: где лежит и какой именно (для проверки перед извлечением). */
+    /** Existing pattern with the same output: where it is and which one (re-checked before extraction). */
     private static final class Conflict {
 
         final WeakReference<IInterfaceViewable> view;
@@ -108,13 +108,13 @@ public final class Candidates {
 
     private Candidates() {}
 
-    // ------------------------------------------------------------------ запрос списка
+    // ------------------------------------------------------------------ list request
 
     public static void handleRequest(EntityPlayerMP player, String category, List<ItemStack> nonConsumables) {
         Net.CandidateList reply = new Net.CandidateList();
         reply.token = nextToken++;
         Container open = player.openContainer;
-        if (!(open instanceof ContainerPatternTerm)) return; // терминал уже закрыт — молча
+        if (!(open instanceof ContainerPatternTerm)) return; // terminal already closed, ignore
         ContainerPatternTerm term = (ContainerPatternTerm) open;
 
         ItemStack pattern = encodedPattern(term);
@@ -127,7 +127,8 @@ public final class Candidates {
             reply.note = NOTE_DENIED;
         } else {
             List<Scored> scored = score(grid, player.worldObj, category, nonConsumables, pattern);
-            // Конфликты ищем по всей сети, до фильтрации: старый рецепт мог быть в машине другого типа.
+            // Look for conflicts across the whole network before filtering: the old recipe may be in another machine
+            // type.
             List<Conflict> conflicts = new ArrayList<>();
             for (Scored s : scored) {
                 for (int i = 0; i < s.sameSlots.size() && conflicts.size() < MAX_CONFLICTS; i++) {
@@ -152,9 +153,9 @@ public final class Candidates {
             boolean anyMachine = false;
             for (Scored s : scored) anyMachine |= (s.flags & Net.Entry.RECIPE_MATCH) != 0;
             RecipeMap<?> wanted = recipeMapOf(category);
-            // Машину нашли (по NEI или по содержимому шаблона) — пояснения не нужны.
+            // Machine found (via NEI or pattern contents): no note needed.
             if (!anyMachine) reply.note = wanted == null ? NOTE_UNKNOWN_RECIPE : NOTE_NO_MACHINE;
-            // Есть подходящие машины — показываем только их; иначе все интерфейсы со свободным местом.
+            // Show only matching machines if any; otherwise every interface with free space.
             if (anyMachine) scored.removeIf(s -> (s.flags & Net.Entry.RECIPE_MATCH) == 0);
             else scored.removeIf(s -> s.free == 0);
             scored.sort(ORDER);
@@ -170,7 +171,7 @@ public final class Candidates {
         Net.CH.sendTo(reply, player);
     }
 
-    /** Подходящие сверху: есть место → машина → форма → нет такого же шаблона → имя. */
+    /** Order: has space -> machine -> mold -> no duplicate -> name. */
     private static final Comparator<Scored> ORDER = Comparator.<Scored>comparingInt(s -> s.free > 0 ? 0 : 1)
         .thenComparingInt(s -> (s.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0 : 1)
         .thenComparingInt(
@@ -186,7 +187,7 @@ public final class Candidates {
         String suffix;
         int free;
         int flags;
-        /** Слоты с шаблоном на тот же результат. */
+        /** Slots holding a pattern with the same output. */
         final List<Integer> sameSlots = new ArrayList<>();
 
         Net.Entry toEntry() {
@@ -204,7 +205,7 @@ public final class Candidates {
         ItemStack pattern) {
         RecipeMap<?> wanted = recipeMapOf(category);
         ItemStack output = patternOutput(pattern, world);
-        // Рецепт не пришёл из NEI — проверим машины по их картам рецептов по содержимому шаблона.
+        // No NEI context: check machines against their recipe maps using the pattern contents.
         PatternContents contents = wanted == null ? PatternContents.of(pattern, world) : null;
         List<Scored> out = new ArrayList<>();
         Set<IInterfaceViewable> seen = new HashSet<>();
@@ -235,7 +236,7 @@ public final class Candidates {
         s.icon = view.getDisplayRep() != null ? view.getDisplayRep() : view.getSelfRep();
         s.name = view.getRawName() == null ? "" : view.getRawName();
         IChatComponent suffix = view.getNameSuffix();
-        // Передаём как JSON: клиент переведёт подпись на языке игрока (на сервере язык свой).
+        // Sent as JSON so the client translates it in the player's language.
         s.suffix = suffix == null ? "" : IChatComponent.Serializer.func_150696_a(suffix);
 
         int slots = Math.min(inv.getSizeInventory(), view.numSlots());
@@ -275,8 +276,9 @@ public final class Candidates {
                 }
             }
         } else if (contents != null && !contents.isEmpty()) {
-            // Категории нет: ищем настоящий рецепт GT из входов шаблона и того, что лежит в машине (форма, схема).
-            // Нашёлся рецепт с этим же результатом — машина подходит, и форма в ней правильная.
+            // No category: look up a real GT recipe from the pattern inputs plus what the machine holds (mold,
+            // circuit).
+            // A recipe with the same output means the machine fits and its mold is right.
             Collection<RecipeMap<?>> maps = machineRecipeMaps(view);
             if (!maps.isEmpty()) {
                 List<ItemStack> held = machineHeldItems(view);
@@ -291,7 +293,7 @@ public final class Candidates {
         return s;
     }
 
-    /** Входы и основной выход шаблона в виде, понятном поиску рецептов GT. */
+    /** Pattern inputs and main output in a form GT recipe lookup understands. */
     private static final class PatternContents {
 
         final List<ItemStack> items = new ArrayList<>();
@@ -325,7 +327,7 @@ public final class Candidates {
             return (items.isEmpty() && fluids.isEmpty()) || (outItem == null && outFluid == null);
         }
 
-        /** Есть ли в карте рецепт из этих входов (плюс то, что лежит в машине) с тем же результатом. */
+        /** Whether the map has a recipe from these inputs (plus machine contents) with the same output. */
         boolean madeBy(RecipeMap<?> map, List<ItemStack> held) {
             List<ItemStack> in = new ArrayList<>(items);
             in.addAll(held);
@@ -352,7 +354,7 @@ public final class Candidates {
         }
     }
 
-    // ------------------------------------------------------------------ извлечение старого шаблона
+    // ------------------------------------------------------------------ extracting the old pattern
 
     public static void handleExtract(EntityPlayerMP player, int token, int index) {
         Session session = SESSIONS.get(player.getUniqueID());
@@ -378,7 +380,7 @@ public final class Candidates {
         }
         IInventory inv = view.getPatterns();
         ItemStack now = c.slot < inv.getSizeInventory() ? inv.getStackInSlot(c.slot) : null;
-        // В слоте должен лежать ровно тот шаблон, что мы показали: иначе его уже кто-то поменял.
+        // The slot must still hold exactly the pattern we listed; otherwise someone changed it.
         if (now == null || !ItemStack.areItemStacksEqual(now, c.pattern)) {
             Net.CH.sendTo(new Net.Result(Net.Result.GONE, view.getRawName()), player);
             return;
@@ -387,7 +389,7 @@ public final class Candidates {
         inv.setInventorySlotContents(c.slot, null);
         inv.markDirty();
         if (!player.inventory.addItemStackToInventory(taken)) {
-            inv.setInventorySlotContents(c.slot, now); // инвентарь полон — возвращаем как было
+            inv.setInventorySlotContents(c.slot, now); // inventory full: put it back
             inv.markDirty();
             Net.CH.sendTo(new Net.Result(Net.Result.INV_FULL, view.getRawName()), player);
             return;
@@ -397,7 +399,7 @@ public final class Candidates {
         Net.CH.sendTo(new Net.Result(Net.Result.EXTRACTED, view.getRawName()), player);
     }
 
-    // ------------------------------------------------------------------ загрузка
+    // ------------------------------------------------------------------ upload
 
     public static void handleUpload(EntityPlayerMP player, int token, int index) {
         Session session = SESSIONS.get(player.getUniqueID());
@@ -449,7 +451,7 @@ public final class Candidates {
         Net.CH.sendTo(new Net.Result(Net.Result.FULL, view.getRawName()), player);
     }
 
-    // ------------------------------------------------------------------ помощники
+    // ------------------------------------------------------------------ helpers
 
     private static ItemStack encodedPattern(ContainerPatternTerm term) {
         IInventory inv = term.getPatternTerminal()
@@ -460,8 +462,8 @@ public final class Candidates {
     }
 
     /**
-     * Основной выход шаблона. Разбираем сами в мире сервера: ItemEncodedPattern.getOutput() берёт мир у клиентского
-     * прокси AE2 и на сервере возвращает null.
+     * Main pattern output, decoded in the server world: ItemEncodedPattern.getOutput() uses the AE2 client proxy
+     * world and returns null on a server.
      */
     private static ItemStack patternOutput(ItemStack pattern, World world) {
         if (pattern == null || !(pattern.getItem() instanceof ICraftingPatternItem) || world == null) return null;
@@ -495,7 +497,7 @@ public final class Candidates {
         return security == null || security.hasPermission(player, SecurityPermissions.BUILD);
     }
 
-    /** Карта рецептов GregTech по идентификатору категории NEI. */
+    /** GregTech recipe map for an NEI category id. */
     public static RecipeMap<?> recipeMapOf(String category) {
         if (category == null || category.isEmpty()) return null;
         for (RecipeCategory c : RecipeCategory.ALL_RECIPE_CATEGORIES.values()) {
@@ -504,14 +506,14 @@ public final class Candidates {
         return null;
     }
 
-    /** Какие карты рецептов у машины, в которую этот интерфейс/CRIB подаёт предметы. */
+    /** Recipe maps of the machine this interface/CRIB feeds. */
     private static Collection<RecipeMap<?>> machineRecipeMaps(IInterfaceViewable view) {
         Set<RecipeMap<?>> maps = new HashSet<>();
         TileEntity self = view.getTileEntity();
         if (self == null) return maps;
-        // CRIB и прочие люки GT: машина — контроллер многоблока.
+        // CRIB and other GT hatches: the machine is the multiblock controller.
         maps.addAll(recipeMapsOf(self, 0));
-        // ME-интерфейс AE2: машина — соседний блок, в который он выдаёт.
+        // AE2 ME interface: the machine is the neighbour it outputs into.
         if (view instanceof IInterfaceHost) {
             IInterfaceHost host = (IInterfaceHost) view;
             for (TileEntity n : neighbours(self, host.getTargets())) maps.addAll(recipeMapsOf(n, 0));
@@ -536,7 +538,7 @@ public final class Candidates {
         return Collections.emptyList();
     }
 
-    /** Что лежит в машине из несъедаемого: формы, линзы, схемы. */
+    /** Non-consumed items held by the machine: molds, lenses, circuits. */
     private static List<ItemStack> machineHeldItems(IInterfaceViewable view) {
         List<ItemStack> held = new ArrayList<>();
         TileEntity self = view.getTileEntity();
@@ -552,7 +554,7 @@ public final class Candidates {
                 IGregTechTileEntity gt = (IGregTechTileEntity) n;
                 IMetaTileEntity mte = gt.getMetaTileEntity();
                 if (mte instanceof MTEBasicMachine || mte instanceof MTEHatchInputBus) {
-                    // Входные слоты одноблочной машины или входной шины: форма лежит там же.
+                    // Input slots of a single-block machine or input bus: the mold sits there too.
                     for (int i = 0; i < gt.getSizeInventory(); i++) {
                         ItemStack s = gt.getStackInSlot(i);
                         if (s != null) held.add(s);

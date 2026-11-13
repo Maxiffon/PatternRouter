@@ -9,11 +9,11 @@ import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 
 /**
- * Боковая панель в терминале шаблонов AE2: закодированный шаблон можно сразу положить в ME-интерфейс или CRIB,
- * чья машина GregTech делает этот рецепт (и в которой лежит нужная форма).
+ * Side panel in the AE2 pattern terminal: put the freshly encoded pattern straight into the ME interface or CRIB
+ * whose GregTech machine runs this recipe (with the right mold/circuit).
  *
- * Нужен и клиенту, и серверу. acceptableRemoteVersions = "*": если мод есть только с одной стороны, игрок всё равно
- * подключается, просто панель ничего не найдёт.
+ * Needed on both sides. acceptableRemoteVersions = "*": if only one side has it, players can still
+ * connect; the panel just finds nothing.
  */
 @Mod(
     modid = PatternRouter.MODID,

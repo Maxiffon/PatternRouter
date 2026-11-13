@@ -9,7 +9,7 @@ import cpw.mods.fml.common.gameevent.TickEvent;
 
 public class CommonProxy {
 
-    /** Задачи из сетевого потока, которые надо выполнить в основном потоке сервера. */
+    /** Tasks from the network thread that must run on the server thread. */
     private static final Queue<Runnable> SERVER_TASKS = new ConcurrentLinkedQueue<>();
 
     public static void runOnServer(Runnable r) {
@@ -22,10 +22,10 @@ public class CommonProxy {
             .register(this);
     }
 
-    /** Только на клиенте: пришёл список кандидатов. */
+    /** Client only: candidate list received. */
     public void onCandidates(Net.CandidateList msg) {}
 
-    /** Только на клиенте: пришёл результат загрузки. */
+    /** Client only: upload result received. */
     public void onResult(Net.Result msg) {}
 
     @SubscribeEvent

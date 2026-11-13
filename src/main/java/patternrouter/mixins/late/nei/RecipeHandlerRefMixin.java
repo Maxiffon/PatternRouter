@@ -15,8 +15,8 @@ import codechicken.nei.recipe.RecipeHandlerRef;
 import patternrouter.client.RecipeContext;
 
 /**
- * Через RecipeHandlerRef проходит любой перенос рецепта из NEI в открытый интерфейс (в том числе через
- * NotEnoughEnergistics). Здесь видно, из какой категории рецепт и какие у него несъедаемые входы.
+ * Every NEI recipe transfer into an open GUI goes through RecipeHandlerRef (including
+ * NotEnoughEnergistics). It exposes the recipe category and its non-consumed inputs.
  */
 @Mixin(value = RecipeHandlerRef.class, remap = false)
 public abstract class RecipeHandlerRefMixin {

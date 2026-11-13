@@ -7,7 +7,7 @@ import net.minecraftforge.common.config.Configuration;
 /** config/patternrouter.cfg */
 public final class Config {
 
-    /** Где показывать панель: right — справа от терминала (NEI уступает место), left — слева. */
+    /** Panel side: right of the terminal (NEI makes room) or left. */
     public static String panelSide = "right";
 
     private Config() {}

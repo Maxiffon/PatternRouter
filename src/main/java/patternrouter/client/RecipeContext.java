@@ -9,10 +9,10 @@ import net.minecraft.item.ItemStack;
 import codechicken.nei.PositionedStack;
 import codechicken.nei.recipe.IRecipeHandler;
 
-/** Последний рецепт, перенесённый из NEI: категория (у GT — тип машины), несъедаемые входы, результат. */
+/** Last recipe transferred from NEI: category (GT machine type), non-consumed inputs, result. */
 public final class RecipeContext {
 
-    /** Сколько помним рецепт: шаблон обычно кодируют сразу после переноса. */
+    /** How long the recipe is remembered; patterns are usually encoded right after the transfer. */
     private static final long TTL_MS = 30L * 60 * 1000;
 
     public static String category = "";
@@ -29,7 +29,7 @@ public final class RecipeContext {
             List<PositionedStack> ingredients = handler.getIngredientStacks(recipeIndex);
             if (ingredients != null) {
                 for (PositionedStack ps : ingredients) {
-                    // В NEI у GregTech несъедаемые входы (формы, схемы, линзы) показаны с количеством 0.
+                    // GT shows non-consumed inputs (molds, circuits, lenses) in NEI with stack size 0.
                     if (ps != null && ps.item != null && ps.item.stackSize == 0) {
                         ItemStack c = ps.item.copy();
                         c.stackSize = 1;
@@ -49,7 +49,7 @@ public final class RecipeContext {
         }
     }
 
-    /** Рецепт свежий и его результат совпадает с выходом шаблона (иначе шаблон кодировали вручную). */
+    /** The recipe is fresh and its result matches the pattern output (otherwise the pattern was made by hand). */
     public static boolean appliesTo(ItemStack patternOutput) {
         if (time == 0 || System.currentTimeMillis() - time > TTL_MS) return false;
         if (result == null || patternOutput == null) return true;

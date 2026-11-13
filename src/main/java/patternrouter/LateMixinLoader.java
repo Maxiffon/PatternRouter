@@ -10,7 +10,7 @@ import com.gtnewhorizon.gtnhmixins.LateMixin;
 import cpw.mods.fml.relauncher.FMLLaunchHandler;
 import cpw.mods.fml.relauncher.Side;
 
-/** Миксины в GT и NEI. Они поздние, потому что это обычные моды, а не coremod. */
+/** Mixins into GT and NEI. Late, because both are regular mods, not coremods. */
 @LateMixin
 public class LateMixinLoader implements ILateMixinLoader {
 
@@ -23,11 +23,11 @@ public class LateMixinLoader implements ILateMixinLoader {
     public List<String> getMixins(Set<String> loadedMods) {
         List<String> mixins = new ArrayList<>();
         if (loadedMods.contains("gregtech")) {
-            // Координаты контроллера, записанные в люке (нужны для CRIB).
+            // Controller coordinates stored in the hatch (needed for CRIB).
             mixins.add("gt.MTEHatchAccessor");
         }
         if (FMLLaunchHandler.side() == Side.CLIENT && loadedMods.contains("NotEnoughItems")) {
-            // Запоминаем рецепт NEI, который переносят в терминал шаблонов.
+            // Remember the NEI recipe transferred into the pattern terminal.
             mixins.add("nei.RecipeHandlerRefMixin");
         }
         return mixins;
