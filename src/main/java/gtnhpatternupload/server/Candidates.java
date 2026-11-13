@@ -183,7 +183,8 @@ public final class Candidates {
         s.icon = view.getDisplayRep() != null ? view.getDisplayRep() : view.getSelfRep();
         s.name = view.getRawName() == null ? "" : view.getRawName();
         IChatComponent suffix = view.getNameSuffix();
-        s.suffix = suffix == null ? "" : suffix.getUnformattedText();
+        // Передаём как JSON: клиент переведёт подпись на языке игрока (на сервере язык свой).
+        s.suffix = suffix == null ? "" : IChatComponent.Serializer.func_150696_a(suffix);
 
         int slots = Math.min(inv.getSizeInventory(), view.numSlots());
         for (int i = 0; i < slots; i++) {

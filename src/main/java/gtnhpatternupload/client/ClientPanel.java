@@ -18,6 +18,7 @@ import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.IChatComponent;
 import net.minecraft.util.StatCollector;
 import net.minecraftforge.client.event.GuiScreenEvent;
 
@@ -37,9 +38,10 @@ import gtnhpatternupload.server.Candidates;
  */
 public class ClientPanel {
 
-    private static final int W = 176;
-    private static final int ROW_H = 24;
-    private static final int ROWS = 7;
+    private static final int W = 204;
+    /** Три строки: имя машины, подпись (форма/схема из CRIB), признаки. */
+    private static final int ROW_H = 34;
+    private static final int ROWS = 6;
     private static final int HEADER = 24;
     private static final int FOOTER = 22;
     private static final int BASE_ID = 0x6A5000;
@@ -53,6 +55,7 @@ public class ClientPanel {
     private boolean visible;
     private final List<RowButton> rows = new ArrayList<>();
     private GuiButton up, down;
+    private Background bg;
 
     // Состояние списка
     private String lastKey;
@@ -64,6 +67,7 @@ public class ClientPanel {
     private String status = "";
     private int statusColor;
     private long statusUntil;
+    private String lastUploadName;
 
     public void post(Runnable r) {
         tasks.add(r);
@@ -89,7 +93,7 @@ public class ClientPanel {
         gui = (GuiContainer) e.gui;
         layout();
         rows.clear();
-        Background bg = new Background(BASE_ID, px, py, W, ph);
+        bg = new Background(BASE_ID, px, py, W, ph);
         e.buttonList.add(bg);
         for (int i = 0; i < ROWS; i++) {
             RowButton b = new RowButton(BASE_ID + 1 + i, px + 4, py + HEADER + i * ROW_H, W - 8, ROW_H - 2, i);
@@ -124,6 +128,12 @@ public class ClientPanel {
         up.visible = down.visible = visible && entries.size() > ROWS;
         up.enabled = scroll > 0;
         down.enabled = scroll < maxScroll;
+        // Высота панели — по содержимому, а не на весь экран.
+        int shown = Math.min(entries.size(), ROWS);
+        int body = shown > 0 ? shown * ROW_H + (noteText().isEmpty() ? 0 : 24) : 34;
+        ph = HEADER + body + FOOTER;
+        bg.height = ph;
+        up.yPosition = down.yPosition = py + ph - FOOTER + 2;
     }
 
     @SubscribeEvent
@@ -152,6 +162,7 @@ public class ClientPanel {
         else if (e.button instanceof RowButton) {
             int index = scroll + ((RowButton) e.button).slot;
             if (index < entries.size()) {
+                lastUploadName = displayName(entries.get(index));
                 Net.CH.sendToServer(new Net.Upload(token, index));
                 setStatus(I18n.format("gtnhpatternupload.status.uploading"), 0xAAAAAA, 3000);
             }
@@ -162,6 +173,10 @@ public class ClientPanel {
 
     public void onCandidates(Net.CandidateList msg) {
         if (gui == null) return;
+        for (Net.Entry e : msg.entries) {
+            e.name = resolveName(e.name, e.icon);
+            e.suffix = parseSuffix(e.suffix);
+        }
         token = msg.token;
         entries = msg.entries;
         note = msg.note;
@@ -170,7 +185,7 @@ public class ClientPanel {
     }
 
     public void onResult(Net.Result msg) {
-        String name = translate(msg.name);
+        String name = lastUploadName != null ? lastUploadName : resolveName(msg.name, null);
         switch (msg.code) {
             case Net.Result.OK:
                 setStatus(I18n.format("gtnhpatternupload.result.ok", name), 0x55FF55, 4000);
@@ -267,12 +282,41 @@ public class ClientPanel {
 
     private static String translate(String raw) {
         if (raw == null) return "";
-        return StatCollector.canTranslate(raw) ? StatCollector.translateToLocal(raw) : raw;
+        if (StatCollector.canTranslate(raw)) return StatCollector.translateToLocal(raw);
+        if (StatCollector.canTranslate(raw + ".name")) return StatCollector.translateToLocal(raw + ".name");
+        return raw;
+    }
+
+    /**
+     * Имя для показа. Сервер шлёт «сырое» имя: переименование игрока или ключ перевода машины (у GT это ключ без
+     * «.name», например gt.blockmachines.industrialextruder). Если ключ не переводится — берём имя предмета-иконки.
+     */
+    private static String resolveName(String raw, ItemStack icon) {
+        String t = translate(raw);
+        boolean looksLikeKey = t.equals(raw) && raw.indexOf(' ') < 0 && raw.indexOf('.') > 0;
+        if (looksLikeKey && icon != null) {
+            try {
+                return icon.getDisplayName();
+            } catch (Throwable ignored) {}
+        }
+        return t;
+    }
+
+    /** Подпись CRIB (форма, схема, номер) приходит как JSON и переводится на языке игрока. */
+    private static String parseSuffix(String json) {
+        if (json == null || json.isEmpty()) return "";
+        try {
+            IChatComponent c = IChatComponent.Serializer.func_150699_a(json);
+            return c == null ? ""
+                : c.getFormattedText()
+                    .trim();
+        } catch (Throwable t) {
+            return json;
+        }
     }
 
     private static String displayName(Net.Entry e) {
-        String n = translate(e.name);
-        return e.suffix == null || e.suffix.isEmpty() ? n : n + " " + e.suffix;
+        return e.suffix == null || e.suffix.isEmpty() ? e.name : e.name + " " + e.suffix;
     }
 
     private static String flagsLine(Net.Entry e, boolean long_) {
@@ -409,9 +453,12 @@ public class ClientPanel {
                 GL11.glPopMatrix();
             }
             FontRenderer fr = mc.fontRenderer;
-            int tx = xPosition + 21, tw = width - 23;
-            fr.drawStringWithShadow(fr.trimStringToWidth(displayName(e), tw), tx, yPosition + 2, 0xFFFFFF);
-            fr.drawString(fr.trimStringToWidth(flagsLine(e, false), tw), tx, yPosition + 12, 0xAAAAAA);
+            int tx = xPosition + 22, tw = width - 25;
+            fr.drawStringWithShadow(fr.trimStringToWidth(e.name, tw), tx, yPosition + 2, 0xFFFFFF);
+            if (e.suffix != null && !e.suffix.isEmpty()) {
+                fr.drawString(fr.trimStringToWidth(e.suffix, tw), tx, yPosition + 12, 0xC8C8C8);
+            }
+            fr.drawString(fr.trimStringToWidth(flagsLine(e, false), tw), tx, yPosition + 22, 0xAAAAAA);
         }
     }
 }
