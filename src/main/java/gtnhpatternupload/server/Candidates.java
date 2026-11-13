@@ -69,13 +69,32 @@ public final class Candidates {
         final int token;
         final WeakReference<Container> container;
         final List<WeakReference<IInterfaceViewable>> targets;
+        final List<Conflict> conflicts;
 
-        Session(int token, Container container, List<WeakReference<IInterfaceViewable>> targets) {
+        Session(int token, Container container, List<WeakReference<IInterfaceViewable>> targets,
+            List<Conflict> conflicts) {
             this.token = token;
             this.container = new WeakReference<>(container);
             this.targets = targets;
+            this.conflicts = conflicts;
         }
     }
+
+    /** Уже существующий шаблон на тот же результат: где лежит и какой именно (для проверки перед извлечением). */
+    private static final class Conflict {
+
+        final WeakReference<IInterfaceViewable> view;
+        final int slot;
+        final ItemStack pattern;
+
+        Conflict(IInterfaceViewable view, int slot, ItemStack pattern) {
+            this.view = new WeakReference<>(view);
+            this.slot = slot;
+            this.pattern = pattern.copy();
+        }
+    }
+
+    private static final int MAX_CONFLICTS = 8;
 
     private static final Map<UUID, Session> SESSIONS = new HashMap<>();
     private static int nextToken = 1;
@@ -101,6 +120,20 @@ public final class Candidates {
             reply.note = NOTE_DENIED;
         } else {
             List<Scored> scored = score(grid, player.worldObj, category, nonConsumables, pattern);
+            // Конфликты ищем по всей сети, до фильтрации: старый рецепт мог быть в машине другого типа.
+            List<Conflict> conflicts = new ArrayList<>();
+            for (Scored s : scored) {
+                for (int i = 0; i < s.sameSlots.size() && conflicts.size() < MAX_CONFLICTS; i++) {
+                    int slot = s.sameSlots.get(i);
+                    ItemStack old = s.view.getPatterns()
+                        .getStackInSlot(slot);
+                    if (old == null) continue;
+                    conflicts.add(new Conflict(s.view, slot, old));
+                    Net.Entry e = s.toEntry();
+                    e.flags = Net.Entry.HAS_SAME;
+                    reply.conflicts.add(e);
+                }
+            }
             boolean anyMachine = false;
             for (Scored s : scored) anyMachine |= (s.flags & Net.Entry.RECIPE_MATCH) != 0;
             RecipeMap<?> wanted = recipeMapOf(category);
@@ -117,7 +150,7 @@ public final class Candidates {
                 refs.add(new WeakReference<>(s.view));
                 reply.entries.add(s.toEntry());
             }
-            SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, refs));
+            SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, refs, conflicts));
         }
         Net.CH.sendTo(reply, player);
     }
@@ -138,6 +171,8 @@ public final class Candidates {
         String suffix;
         int free;
         int flags;
+        /** Слоты с шаблоном на тот же результат. */
+        final List<Integer> sameSlots = new ArrayList<>();
 
         Net.Entry toEntry() {
             Net.Entry e = new Net.Entry();
@@ -193,6 +228,7 @@ public final class Candidates {
                 if (inv.isItemValidForSlot(i, pattern)) s.free++;
             } else if (output != null && sameItem(patternOutput(in), output)) {
                 s.flags |= Net.Entry.HAS_SAME;
+                s.sameSlots.add(i);
             }
         }
 
@@ -218,6 +254,51 @@ public final class Candidates {
             }
         }
         return s;
+    }
+
+    // ------------------------------------------------------------------ извлечение старого шаблона
+
+    public static void handleExtract(EntityPlayerMP player, int token, int index) {
+        Session session = SESSIONS.get(player.getUniqueID());
+        Container open = player.openContainer;
+        if (session == null || session.token != token
+            || session.container.get() != open
+            || !(open instanceof ContainerPatternTerm)
+            || index < 0
+            || index >= session.conflicts.size()) {
+            Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
+            return;
+        }
+        Conflict c = session.conflicts.get(index);
+        IInterfaceViewable view = c.view.get();
+        IGrid grid = gridOf((ContainerPatternTerm) open);
+        if (view == null || grid == null || !sameGrid(view, grid)) {
+            Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
+            return;
+        }
+        if (!canBuild(grid, player)) {
+            Net.CH.sendTo(new Net.Result(Net.Result.DENIED, view.getRawName()), player);
+            return;
+        }
+        IInventory inv = view.getPatterns();
+        ItemStack now = c.slot < inv.getSizeInventory() ? inv.getStackInSlot(c.slot) : null;
+        // В слоте должен лежать ровно тот шаблон, что мы показали: иначе его уже кто-то поменял.
+        if (now == null || !ItemStack.areItemStacksEqual(now, c.pattern)) {
+            Net.CH.sendTo(new Net.Result(Net.Result.GONE, view.getRawName()), player);
+            return;
+        }
+        ItemStack taken = now.copy();
+        inv.setInventorySlotContents(c.slot, null);
+        inv.markDirty();
+        if (!player.inventory.addItemStackToInventory(taken)) {
+            inv.setInventorySlotContents(c.slot, now); // инвентарь полон — возвращаем как было
+            inv.markDirty();
+            Net.CH.sendTo(new Net.Result(Net.Result.INV_FULL, view.getRawName()), player);
+            return;
+        }
+        player.inventoryContainer.detectAndSendChanges();
+        open.detectAndSendChanges();
+        Net.CH.sendTo(new Net.Result(Net.Result.EXTRACTED, view.getRawName()), player);
     }
 
     // ------------------------------------------------------------------ загрузка

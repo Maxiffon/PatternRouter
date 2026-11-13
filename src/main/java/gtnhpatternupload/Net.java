@@ -29,6 +29,43 @@ public final class Net {
         CH.registerMessage(Upload.Handler.class, Upload.class, 1, Side.SERVER);
         CH.registerMessage(CandidateList.Handler.class, CandidateList.class, 2, Side.CLIENT);
         CH.registerMessage(Result.Handler.class, Result.class, 3, Side.CLIENT);
+        CH.registerMessage(ExtractOld.Handler.class, ExtractOld.class, 4, Side.SERVER);
+    }
+
+    /** Вынуть старый шаблон на тот же результат (конфликт номер index) в инвентарь игрока. */
+    public static class ExtractOld implements IMessage {
+
+        public int token;
+        public int index;
+
+        public ExtractOld() {}
+
+        public ExtractOld(int token, int index) {
+            this.token = token;
+            this.index = index;
+        }
+
+        @Override
+        public void fromBytes(ByteBuf buf) {
+            token = buf.readInt();
+            index = buf.readUnsignedByte();
+        }
+
+        @Override
+        public void toBytes(ByteBuf buf) {
+            buf.writeInt(token);
+            buf.writeByte(index);
+        }
+
+        public static class Handler implements IMessageHandler<ExtractOld, IMessage> {
+
+            @Override
+            public IMessage onMessage(ExtractOld msg, MessageContext ctx) {
+                EntityPlayerMP player = ctx.getServerHandler().playerEntity;
+                CommonProxy.runOnServer(() -> Candidates.handleExtract(player, msg.token, msg.index));
+                return null;
+            }
+        }
     }
 
     // ---------- клиент → сервер ----------
@@ -134,11 +171,26 @@ public final class Net {
         /** 0 — всё хорошо; иначе код причины пустого списка (см. Candidates.NOTE_*). */
         public int note;
         public List<Entry> entries = new ArrayList<>();
+        /** Уже существующие шаблоны на тот же результат (где лежат). */
+        public List<Entry> conflicts = new ArrayList<>();
 
         @Override
         public void fromBytes(ByteBuf buf) {
             token = buf.readInt();
             note = buf.readUnsignedByte();
+            readEntries(buf, entries);
+            readEntries(buf, conflicts);
+        }
+
+        @Override
+        public void toBytes(ByteBuf buf) {
+            buf.writeInt(token);
+            buf.writeByte(note);
+            writeEntries(buf, entries);
+            writeEntries(buf, conflicts);
+        }
+
+        private static void readEntries(ByteBuf buf, List<Entry> list) {
             int n = buf.readUnsignedByte();
             for (int i = 0; i < n; i++) {
                 Entry e = new Entry();
@@ -147,18 +199,15 @@ public final class Net {
                 e.suffix = ByteBufUtils.readUTF8String(buf);
                 e.free = buf.readUnsignedShort();
                 e.flags = buf.readUnsignedByte();
-                entries.add(e);
+                list.add(e);
             }
         }
 
-        @Override
-        public void toBytes(ByteBuf buf) {
-            buf.writeInt(token);
-            buf.writeByte(note);
-            int n = Math.min(entries.size(), 255);
+        private static void writeEntries(ByteBuf buf, List<Entry> list) {
+            int n = Math.min(list.size(), 255);
             buf.writeByte(n);
             for (int i = 0; i < n; i++) {
-                Entry e = entries.get(i);
+                Entry e = list.get(i);
                 ByteBufUtils.writeItemStack(buf, e.icon);
                 ByteBufUtils.writeUTF8String(buf, e.name);
                 ByteBufUtils.writeUTF8String(buf, e.suffix);
@@ -184,6 +233,8 @@ public final class Net {
         public static final int GONE = 2;
         public static final int FULL = 3;
         public static final int DENIED = 4;
+        public static final int EXTRACTED = 5;
+        public static final int INV_FULL = 6;
 
         public int code;
         public String name = "";

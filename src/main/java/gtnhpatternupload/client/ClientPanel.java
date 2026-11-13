@@ -30,44 +30,66 @@ import appeng.items.misc.ItemEncodedPattern;
 import cpw.mods.fml.common.ObfuscationReflectionHelper;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
+import gtnhpatternupload.Config;
 import gtnhpatternupload.Net;
 import gtnhpatternupload.server.Candidates;
 
 /**
- * Боковая панель у терминала шаблонов. Всё на событиях Forge и обычных кнопках: интерфейс AE2 не патчится.
+ * Боковая панель у терминала шаблонов в стиле окон AE2. Всё на событиях Forge и обычных кнопках: интерфейс AE2 не
+ * патчится. NEI уступает место под панелью через INEIGuiAdapter (см. NeiCompat).
  */
 public class ClientPanel {
 
-    private static final int W = 204;
-    /** Три строки: имя машины, подпись (форма/схема из CRIB), признаки. */
+    private static final int MAX_W = 204;
+    private static final int MIN_W = 150;
+    /** Отступ справа от терминала: колонка ячеек вида/улучшений AE2. */
+    private static final int RIGHT_GAP = 28;
+    /** Отступ слева от терминала: колонка кнопок сортировки/вида AE2. */
+    private static final int LEFT_GAP = 54;
+    /** Строка кандидата: имя машины, подпись CRIB (форма/схема), признаки. */
     private static final int ROW_H = 34;
-    private static final int ROWS = 6;
-    private static final int HEADER = 24;
+    private static final int ROWS = 5;
+    /** Строка конфликта: машина со старым шаблоном и кнопка «Извлечь». */
+    private static final int CONF_H = 24;
+    private static final int CONF_ROWS = 3;
+    private static final int HEADER = 22;
     private static final int FOOTER = 22;
     private static final int BASE_ID = 0x6A5000;
     private static final RenderItem ITEM_RENDER = new RenderItem();
 
+    private static final int GUI_FILL = 0xFFC6C6C6;
+    private static final int GUI_TEXT = 0x404040;
+    private static final int GUI_TEXT_DIM = 0x5A5A5A;
+    private static final int GUI_TEXT_BAD = 0x9A1010;
+
     private final Queue<Runnable> tasks = new ConcurrentLinkedQueue<>();
 
-    // Текущий терминал и раскладка
+    // Терминал и раскладка
     private GuiContainer gui;
-    private int px, py, ph;
+    private int px, py, pw, ph;
     private boolean visible;
-    private final List<RowButton> rows = new ArrayList<>();
-    private GuiButton up, down;
     private Background bg;
+    private final List<RowButton> rows = new ArrayList<>();
+    private final List<ConflictRow> confRows = new ArrayList<>();
+    private final List<GuiButton> extractButtons = new ArrayList<>();
+    private GuiButton up, down;
+    // Вычисленные в relayout() координаты блоков
+    private int listY, noteY, confY;
 
-    // Состояние списка
+    // Состояние
     private String lastKey;
     private int token;
     private List<Net.Entry> entries = Collections.emptyList();
+    private List<Net.Entry> conflicts = Collections.emptyList();
     private int note = -1;
     private int scroll;
     private boolean waiting;
     private String status = "";
     private int statusColor;
     private long statusUntil;
-    private String lastUploadName;
+    private String lastActionName;
+    /** Шаблон, для которого показан список (иконка в заголовке). */
+    private ItemStack currentPattern;
 
     public void post(Runnable r) {
         tasks.add(r);
@@ -91,26 +113,42 @@ public class ClientPanel {
         if (!isPatternTerm(e.gui)) return;
         if (gui != e.gui) resetList();
         gui = (GuiContainer) e.gui;
-        layout();
+        layoutHorizontal();
         rows.clear();
-        bg = new Background(BASE_ID, px, py, W, ph);
+        confRows.clear();
+        extractButtons.clear();
+        bg = new Background(BASE_ID);
         e.buttonList.add(bg);
         for (int i = 0; i < ROWS; i++) {
-            RowButton b = new RowButton(BASE_ID + 1 + i, px + 4, py + HEADER + i * ROW_H, W - 8, ROW_H - 2, i);
+            RowButton b = new RowButton(BASE_ID + 1 + i, i);
             rows.add(b);
             e.buttonList.add(b);
         }
-        up = new GuiButton(BASE_ID + 100, px + W - 46, py + ph - FOOTER + 2, 20, 18, "▲");
-        down = new GuiButton(BASE_ID + 101, px + W - 24, py + ph - FOOTER + 2, 20, 18, "▼");
+        for (int i = 0; i < CONF_ROWS; i++) {
+            ConflictRow c = new ConflictRow(BASE_ID + 20 + i, i);
+            confRows.add(c);
+            e.buttonList.add(c);
+            GuiButton x = new GuiButton(
+                BASE_ID + 40 + i,
+                0,
+                0,
+                52,
+                16,
+                I18n.format("gtnhpatternupload.button.extract"));
+            extractButtons.add(x);
+            e.buttonList.add(x);
+        }
+        up = new GuiButton(BASE_ID + 100, 0, 0, 20, 16, "▲");
+        down = new GuiButton(BASE_ID + 101, 0, 0, 20, 16, "▼");
         e.buttonList.add(up);
         e.buttonList.add(down);
+        relayout();
     }
 
     @SubscribeEvent
     public void onDrawPre(GuiScreenEvent.DrawScreenEvent.Pre e) {
-        if (e.gui != gui || gui == null) return;
+        if (e.gui != gui || gui == null || bg == null) return;
         ItemStack pattern = findPattern();
-        long now = System.currentTimeMillis();
         if (pattern != null) {
             String key = keyOf(pattern);
             if (!key.equals(lastKey)) {
@@ -121,19 +159,9 @@ public class ClientPanel {
             lastKey = null;
             resetList();
         }
-        visible = pattern != null || now < statusUntil;
-        int maxScroll = Math.max(0, entries.size() - ROWS);
-        scroll = Math.max(0, Math.min(scroll, maxScroll));
-        for (RowButton b : rows) b.visible = visible && scroll + b.slot < entries.size();
-        up.visible = down.visible = visible && entries.size() > ROWS;
-        up.enabled = scroll > 0;
-        down.enabled = scroll < maxScroll;
-        // Высота панели — по содержимому, а не на весь экран.
-        int shown = Math.min(entries.size(), ROWS);
-        int body = shown > 0 ? shown * ROW_H + (noteText().isEmpty() ? 0 : 24) : 34;
-        ph = HEADER + body + FOOTER;
-        bg.height = ph;
-        up.yPosition = down.yPosition = py + ph - FOOTER + 2;
+        if (pattern != null) currentPattern = pattern;
+        visible = pattern != null || System.currentTimeMillis() < statusUntil;
+        relayout();
     }
 
     @SubscribeEvent
@@ -146,6 +174,18 @@ public class ClientPanel {
                 tip.add(displayName(en));
                 tip.add(flagsLine(en, true));
                 tip.add("§7" + I18n.format("gtnhpatternupload.tip.click"));
+                drawTooltip(tip, e.mouseX, e.mouseY);
+            }
+        }
+        for (int i = 0; i < extractButtons.size(); i++) {
+            GuiButton x = extractButtons.get(i);
+            if (x.visible && e.mouseX >= x.xPosition
+                && e.mouseY >= x.yPosition
+                && e.mouseX < x.xPosition + x.width
+                && e.mouseY < x.yPosition + x.height) {
+                List<String> tip = new ArrayList<>();
+                tip.add(displayName(conflicts.get(i)));
+                tip.add("§7" + I18n.format("gtnhpatternupload.tip.extract"));
                 drawTooltip(tip, e.mouseX, e.mouseY);
             }
         }
@@ -162,9 +202,16 @@ public class ClientPanel {
         else if (e.button instanceof RowButton) {
             int index = scroll + ((RowButton) e.button).slot;
             if (index < entries.size()) {
-                lastUploadName = displayName(entries.get(index));
+                lastActionName = displayName(entries.get(index));
                 Net.CH.sendToServer(new Net.Upload(token, index));
-                setStatus(I18n.format("gtnhpatternupload.status.uploading"), 0x5A5A5A, 3000);
+                setStatus(I18n.format("gtnhpatternupload.status.uploading"), GUI_TEXT_DIM, 3000);
+            }
+        } else {
+            int i = extractButtons.indexOf(e.button);
+            if (i >= 0 && i < conflicts.size()) {
+                lastActionName = displayName(conflicts.get(i));
+                Net.CH.sendToServer(new Net.ExtractOld(token, i));
+                setStatus(I18n.format("gtnhpatternupload.status.extracting"), GUI_TEXT_DIM, 3000);
             }
         }
     }
@@ -173,34 +220,41 @@ public class ClientPanel {
 
     public void onCandidates(Net.CandidateList msg) {
         if (gui == null) return;
-        for (Net.Entry e : msg.entries) {
-            e.name = resolveName(e.name, e.icon);
-            e.suffix = parseSuffix(e.suffix);
-        }
+        for (Net.Entry e : msg.entries) prepare(e);
+        for (Net.Entry e : msg.conflicts) prepare(e);
         token = msg.token;
         entries = msg.entries;
+        conflicts = msg.conflicts;
         note = msg.note;
         scroll = 0;
         waiting = false;
     }
 
     public void onResult(Net.Result msg) {
-        String name = lastUploadName != null ? lastUploadName : resolveName(msg.name, null);
+        String name = lastActionName != null ? lastActionName : resolveName(msg.name, null);
+        int good = 0x1E7A1E, bad = 0xB00000;
         switch (msg.code) {
             case Net.Result.OK:
-                setStatus(I18n.format("gtnhpatternupload.result.ok", name), 0x1E7A1E, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.ok", name), good, 4000);
+                break;
+            case Net.Result.EXTRACTED:
+                setStatus(I18n.format("gtnhpatternupload.result.extracted", name), good, 4000);
+                lastKey = null; // обновить список конфликтов
+                break;
+            case Net.Result.INV_FULL:
+                setStatus(I18n.format("gtnhpatternupload.result.invfull"), bad, 4000);
                 break;
             case Net.Result.FULL:
-                setStatus(I18n.format("gtnhpatternupload.result.full", name), 0xB00000, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.full", name), bad, 4000);
                 break;
             case Net.Result.DENIED:
-                setStatus(I18n.format("gtnhpatternupload.result.denied"), 0xB00000, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.denied"), bad, 4000);
                 break;
             case Net.Result.NO_PATTERN:
-                setStatus(I18n.format("gtnhpatternupload.result.nopattern"), 0xB00000, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.nopattern"), bad, 4000);
                 break;
             default:
-                setStatus(I18n.format("gtnhpatternupload.result.gone"), 0xB00000, 4000);
+                setStatus(I18n.format("gtnhpatternupload.result.gone"), bad, 4000);
                 lastKey = null; // запросить список заново
         }
     }
@@ -208,33 +262,99 @@ public class ClientPanel {
     // ------------------------------------------------------------------ для NEI
 
     public boolean overlaps(GuiContainer g, int x, int y, int w, int h) {
-        return g == gui && visible && x < px + W && x + w > px && y < py + ph && y + h > py;
+        return g == gui && visible && x < px + pw && x + w > px && y < py + ph && y + h > py;
     }
 
-    // ------------------------------------------------------------------ логика
+    // ------------------------------------------------------------------ раскладка
 
     private static boolean isPatternTerm(GuiScreen g) {
         return g instanceof GuiContainer && ((GuiContainer) g).inventorySlots instanceof ContainerPatternTerm;
     }
 
-    private void layout() {
+    /**
+     * Ширина и сторона. Справа — сразу за колонкой ячеек AE2, ширина подстраивается под свободное место (NEI уступает
+     * его). Слева — только если справа совсем тесно, и тогда за колонкой кнопок AE2, чтобы ничего не перекрыть.
+     */
+    private void layoutHorizontal() {
         int left = field("guiLeft", "field_147003_i");
-        int top = field("guiTop", "field_147009_r");
         int xSize = field("xSize", "field_146999_f");
-        ph = HEADER + ROWS * ROW_H + FOOTER;
-        // Справа, с отступом под колонку ячеек вида/улучшений (NEI уступает это место); не помещается — слева.
-        boolean right = !"left".equalsIgnoreCase(gtnhpatternupload.Config.panelSide);
-        px = right ? left + xSize + 28 : left - W - 6;
-        if (right && px + W > gui.width - 2) px = left - W - 6;
-        if (!right && px < 2) px = left + xSize + 28;
-        if (px < 2) px = 2;
+        int rightX = left + xSize + RIGHT_GAP;
+        int rightSpace = gui.width - rightX - 4;
+        int leftEdge = left - LEFT_GAP;
+        int leftSpace = leftEdge - 4;
+        boolean preferLeft = "left".equalsIgnoreCase(Config.panelSide);
+        boolean useRight = preferLeft ? leftSpace < MIN_W && rightSpace >= leftSpace
+            : rightSpace >= MIN_W || rightSpace >= leftSpace;
+        if (useRight) {
+            pw = Math.max(MIN_W, Math.min(MAX_W, rightSpace));
+            px = rightX;
+        } else {
+            pw = Math.max(MIN_W, Math.min(MAX_W, leftSpace));
+            px = Math.max(2, leftEdge - pw);
+        }
+    }
+
+    /** Вертикальная раскладка по содержимому: список, пояснение, конфликты, строка состояния. */
+    private void relayout() {
+        int top = field("guiTop", "field_147009_r");
+        int shown = Math.min(entries.size(), ROWS);
+        int maxScroll = Math.max(0, entries.size() - ROWS);
+        scroll = Math.max(0, Math.min(scroll, maxScroll));
+
+        FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
+        String n = noteText();
+        int noteLines = n.isEmpty() ? 0
+            : fr.listFormattedStringToWidth(n, pw - 16)
+                .size();
+        int confShown = Math.min(conflicts.size(), CONF_ROWS);
+        int confBlock = confShown == 0 ? 0 : 14 + confShown * CONF_H + (conflicts.size() > CONF_ROWS ? 10 : 0) + 4;
+
+        int body = shown * ROW_H + (shown > 0 ? 4 : 0) + (noteLines > 0 ? noteLines * 10 + 4 : 0) + confBlock;
+        ph = HEADER + Math.max(body, 12) + FOOTER;
         py = Math.max(2, Math.min(top, gui.height - ph - 2));
+        listY = py + HEADER;
+        noteY = listY + shown * ROW_H + (shown > 0 ? 4 : 0);
+        confY = noteY + (noteLines > 0 ? noteLines * 10 + 4 : 0);
+
+        bg.xPosition = px;
+        bg.yPosition = py;
+        bg.width = pw;
+        bg.height = ph;
+        bg.visible = visible;
+        for (RowButton b : rows) {
+            b.xPosition = px + 5;
+            b.yPosition = listY + b.slot * ROW_H;
+            b.width = pw - 10;
+            b.height = ROW_H - 1;
+            b.visible = visible && scroll + b.slot < entries.size();
+        }
+        for (int i = 0; i < CONF_ROWS; i++) {
+            ConflictRow c = confRows.get(i);
+            GuiButton x = extractButtons.get(i);
+            boolean on = visible && i < confShown;
+            c.xPosition = px + 5;
+            c.yPosition = confY + 14 + i * CONF_H;
+            c.width = pw - 10;
+            c.height = CONF_H - 1;
+            c.visible = on;
+            x.xPosition = px + pw - 5 - 54;
+            x.yPosition = c.yPosition + (CONF_H - 1 - 16) / 2;
+            x.visible = on;
+        }
+        up.xPosition = px + pw - 48;
+        down.xPosition = px + pw - 26;
+        up.yPosition = down.yPosition = py + ph - FOOTER + 3;
+        up.visible = down.visible = visible && entries.size() > ROWS;
+        up.enabled = scroll > 0;
+        down.enabled = scroll < maxScroll;
     }
 
     private int field(String dev, String srg) {
         Integer v = ObfuscationReflectionHelper.getPrivateValue(GuiContainer.class, gui, dev, srg);
         return v == null ? 0 : v;
     }
+
+    // ------------------------------------------------------------------ логика
 
     private ItemStack findPattern() {
         for (Object o : gui.inventorySlots.inventorySlots) {
@@ -263,12 +383,14 @@ public class ClientPanel {
                 ctx ? RecipeContext.category : "",
                 ctx ? RecipeContext.nonConsumables : Collections.emptyList()));
         entries = Collections.emptyList();
+        conflicts = Collections.emptyList();
         note = -1;
         waiting = true;
     }
 
     private void resetList() {
         entries = Collections.emptyList();
+        conflicts = Collections.emptyList();
         note = -1;
         waiting = false;
         scroll = 0;
@@ -278,6 +400,11 @@ public class ClientPanel {
         status = text;
         statusColor = color;
         statusUntil = System.currentTimeMillis() + ms;
+    }
+
+    private static void prepare(Net.Entry e) {
+        e.name = resolveName(e.name, e.icon);
+        e.suffix = parseSuffix(e.suffix);
     }
 
     private static String translate(String raw) {
@@ -319,9 +446,7 @@ public class ClientPanel {
         return e.suffix == null || e.suffix.isEmpty() ? e.name : e.name + " " + e.suffix;
     }
 
-    /**
-     * Строка признаков. В строке списка (светлый фон AE2) — тёмные цвета, в подсказке (тёмный фон) — яркие.
-     */
+    /** Строка признаков. В строке списка (светлый фон AE2) — тёмные цвета, в подсказке (тёмный фон) — яркие. */
     private static String flagsLine(Net.Entry e, boolean tooltip) {
         String good = tooltip ? "§a" : "§2", bad = tooltip ? "§c" : "§4", warn = tooltip ? "§e" : "§6",
             dim = tooltip ? "§7" : "§8";
@@ -348,32 +473,6 @@ public class ClientPanel {
         return sb.toString();
     }
 
-    // ------------------------------------------------------------------ отрисовка в стиле AE2 (окно Minecraft)
-
-    private static final int GUI_FILL = 0xFFC6C6C6;
-    private static final int GUI_TEXT = 0x404040;
-    private static final int GUI_TEXT_DIM = 0x5A5A5A;
-
-    /** Окно как у интерфейсов AE2: чёрный контур, светлая фаска сверху-слева, тёмная снизу-справа. */
-    private static void drawWindow(int x, int y, int w, int h) {
-        Gui.drawRect(x + 1, y, x + w - 1, y + 1, 0xFF000000);
-        Gui.drawRect(x + 1, y + h - 1, x + w - 1, y + h, 0xFF000000);
-        Gui.drawRect(x, y + 1, x + 1, y + h - 1, 0xFF000000);
-        Gui.drawRect(x + w - 1, y + 1, x + w, y + h - 1, 0xFF000000);
-        Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, GUI_FILL);
-        Gui.drawRect(x + 1, y + 1, x + w - 3, y + 3, 0xFFFFFFFF);
-        Gui.drawRect(x + 1, y + 1, x + 3, y + h - 3, 0xFFFFFFFF);
-        Gui.drawRect(x + 3, y + h - 3, x + w - 1, y + h - 1, 0xFF555555);
-        Gui.drawRect(x + w - 3, y + 3, x + w - 1, y + h - 1, 0xFF555555);
-    }
-
-    /** Утопленный слот 18×18, как ячейки AE2. */
-    private static void drawSlot(int x, int y) {
-        Gui.drawRect(x, y, x + 18, y + 18, 0xFF373737);
-        Gui.drawRect(x + 1, y + 1, x + 18, y + 18, 0xFFFFFFFF);
-        Gui.drawRect(x + 1, y + 1, x + 17, y + 17, 0xFF8B8B8B);
-    }
-
     private String noteText() {
         if (waiting) return I18n.format("gtnhpatternupload.note.waiting");
         switch (note) {
@@ -392,8 +491,68 @@ public class ClientPanel {
         }
     }
 
+    // ------------------------------------------------------------------ отрисовка в стиле AE2 (окно Minecraft)
+
+    /** Окно как у интерфейсов AE2: чёрный контур, светлая фаска сверху-слева, тёмная снизу-справа. */
+    private static void drawWindow(int x, int y, int w, int h) {
+        Gui.drawRect(x + 1, y, x + w - 1, y + 1, 0xFF000000);
+        Gui.drawRect(x + 1, y + h - 1, x + w - 1, y + h, 0xFF000000);
+        Gui.drawRect(x, y + 1, x + 1, y + h - 1, 0xFF000000);
+        Gui.drawRect(x + w - 1, y + 1, x + w, y + h - 1, 0xFF000000);
+        Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, GUI_FILL);
+        Gui.drawRect(x + 1, y + 1, x + w - 3, y + 3, 0xFFFFFFFF);
+        Gui.drawRect(x + 1, y + 1, x + 3, y + h - 3, 0xFFFFFFFF);
+        Gui.drawRect(x + 3, y + h - 3, x + w - 1, y + h - 1, 0xFF555555);
+        Gui.drawRect(x + w - 3, y + 3, x + w - 1, y + h - 1, 0xFF555555);
+    }
+
+    /** Утопленное поле (как область слотов в терминале). */
+    private static void drawInset(int x, int y, int w, int h) {
+        Gui.drawRect(x, y, x + w, y + h, 0xFF8B8B8B);
+        Gui.drawRect(x, y, x + w, y + 1, 0xFF373737);
+        Gui.drawRect(x, y, x + 1, y + h, 0xFF373737);
+        Gui.drawRect(x + 1, y + h - 1, x + w, y + h, 0xFFFFFFFF);
+        Gui.drawRect(x + w - 1, y + 1, x + w, y + h, 0xFFFFFFFF);
+    }
+
+    /** Выпуклая плитка: светлая фаска сверху-слева, тень снизу-справа; нажатая — наоборот. */
+    private static void drawRaised(int x, int y, int w, int h, int fill, boolean pressed) {
+        int hi = pressed ? 0xFF555555 : 0xFFFFFFFF;
+        int lo = pressed ? 0xFFFFFFFF : 0xFF555555;
+        Gui.drawRect(x, y, x + w, y + h, 0xFF373737);
+        Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, fill);
+        Gui.drawRect(x + 1, y + 1, x + w - 2, y + 2, hi);
+        Gui.drawRect(x + 1, y + 1, x + 2, y + h - 2, hi);
+        Gui.drawRect(x + 2, y + h - 2, x + w - 1, y + h - 1, lo);
+        Gui.drawRect(x + w - 2, y + 2, x + w - 1, y + h - 1, lo);
+    }
+
+    /** Мягкая тень под окном, чтобы панель «висела» над экраном. */
+    private static void drawShadow(int x, int y, int w, int h) {
+        Gui.drawRect(x + 4, y + h, x + w + 2, y + h + 3, 0x50000000);
+        Gui.drawRect(x + w, y + 4, x + w + 3, y + h + 3, 0x50000000);
+        Gui.drawRect(x + 3, y + h, x + w + 1, y + h + 1, 0x30000000);
+    }
+
+    /** Утопленный слот 18×18, как ячейки AE2. */
+    private static void drawSlot(int x, int y) {
+        Gui.drawRect(x, y, x + 18, y + 18, 0xFF373737);
+        Gui.drawRect(x + 1, y + 1, x + 18, y + 18, 0xFFFFFFFF);
+        Gui.drawRect(x + 1, y + 1, x + 17, y + 17, 0xFF8B8B8B);
+    }
+
+    private static void drawItem(Minecraft mc, ItemStack stack, int x, int y) {
+        if (stack == null) return;
+        GL11.glPushMatrix();
+        RenderHelper.enableGUIStandardItemLighting();
+        GL11.glEnable(GL12.GL_RESCALE_NORMAL);
+        ITEM_RENDER.renderItemAndEffectIntoGUI(mc.fontRenderer, mc.getTextureManager(), stack, x, y);
+        RenderHelper.disableStandardItemLighting();
+        GL11.glDisable(GL11.GL_LIGHTING);
+        GL11.glPopMatrix();
+    }
+
     private void drawTooltip(List<String> lines, int x, int y) {
-        // GuiScreen.drawHoveringText защищён; рисуем простую подсказку сами.
         FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
         int w = 0;
         for (String l : lines) w = Math.max(w, fr.getStringWidth(l));
@@ -408,46 +567,59 @@ public class ClientPanel {
 
     // ------------------------------------------------------------------ кнопки
 
-    /** Фон панели, заголовок и строка состояния. Рисуется первым из наших кнопок. */
+    /** Окно панели, заголовок, пояснение, заголовок конфликтов, строка состояния. Рисуется первым. */
     private class Background extends GuiButton {
 
-        Background(int id, int x, int y, int w, int h) {
-            super(id, x, y, w, h, "");
+        Background(int id) {
+            super(id, 0, 0, 1, 1, "");
             this.enabled = false;
         }
 
         @Override
         public void drawButton(Minecraft mc, int mx, int my) {
-            this.visible = ClientPanel.this.visible;
             if (!visible) return;
             FontRenderer fr = mc.fontRenderer;
+            drawShadow(xPosition, yPosition, width, height);
             drawWindow(xPosition, yPosition, width, height);
-            // Заголовок — как «Терминал шаблонов» у AE2: тёмно-серый, без тени.
-            fr.drawString(I18n.format("gtnhpatternupload.title"), xPosition + 8, yPosition + 8, GUI_TEXT);
+            // Заголовок: шаблон, который загружаем, в слоте + надпись.
+            int tx = xPosition + 8;
+            if (currentPattern != null) {
+                drawSlot(xPosition + 5, yPosition + 2);
+                drawItem(mc, currentPattern, xPosition + 6, yPosition + 3);
+                tx = xPosition + 27;
+            }
+            fr.drawString(I18n.format("gtnhpatternupload.title"), tx, yPosition + 7, GUI_TEXT);
             if (entries.size() > ROWS) {
                 String page = (scroll + 1) + "-" + Math.min(scroll + ROWS, entries.size()) + "/" + entries.size();
-                fr.drawString(page, xPosition + width - 8 - fr.getStringWidth(page), yPosition + 8, GUI_TEXT_DIM);
+                fr.drawString(page, xPosition + width - 8 - fr.getStringWidth(page), yPosition + 7, GUI_TEXT_DIM);
             }
-            // Область списка — утопленная, как поле терминала.
             int shown = Math.min(entries.size(), ROWS);
-            if (shown > 0) {
-                int lx = xPosition + 4, ly = yPosition + HEADER - 2, lw = width - 8, lh = shown * ROW_H + 2;
-                drawRect(lx, ly, lx + lw, ly + lh, 0xFF8B8B8B);
-                drawRect(lx, ly, lx + lw, ly + 1, 0xFF373737);
-                drawRect(lx, ly, lx + 1, ly + lh, 0xFF373737);
-                drawRect(lx + 1, ly + lh - 1, lx + lw, ly + lh, 0xFFFFFFFF);
-                drawRect(lx + lw - 1, ly + 1, lx + lw, ly + lh, 0xFFFFFFFF);
-            }
+            if (shown > 0) drawInset(xPosition + 4, listY - 1, width - 8, shown * ROW_H + 1);
             String n = noteText();
-            int textY = yPosition + HEADER + (shown == 0 ? 2 : shown * ROW_H + 4);
             if (!n.isEmpty()) {
                 List<String> wrapped = fr.listFormattedStringToWidth(n, width - 16);
-                for (int i = 0; i < wrapped.size() && textY + i * 10 < yPosition + height - FOOTER; i++) {
-                    fr.drawString(wrapped.get(i), xPosition + 8, textY + i * 10, GUI_TEXT_DIM);
+                for (int i = 0; i < wrapped.size(); i++) {
+                    fr.drawString(wrapped.get(i), xPosition + 8, noteY + i * 10, GUI_TEXT_DIM);
+                }
+            }
+            int confShown = Math.min(conflicts.size(), CONF_ROWS);
+            if (confShown > 0) {
+                fr.drawString(
+                    fr.trimStringToWidth(I18n.format("gtnhpatternupload.conflict.title", conflicts.size()), width - 16),
+                    xPosition + 8,
+                    confY + 3,
+                    GUI_TEXT_BAD);
+                drawInset(xPosition + 4, confY + 13, width - 8, confShown * CONF_H + 1);
+                if (conflicts.size() > CONF_ROWS) {
+                    fr.drawString(
+                        I18n.format("gtnhpatternupload.conflict.more", conflicts.size() - CONF_ROWS),
+                        xPosition + 8,
+                        confY + 15 + confShown * CONF_H,
+                        GUI_TEXT_DIM);
                 }
             }
             if (System.currentTimeMillis() < statusUntil && !status.isEmpty()) {
-                String s = fr.trimStringToWidth(status, width - 60);
+                String s = fr.trimStringToWidth(status, width - (up.visible ? 60 : 16));
                 fr.drawString(s, xPosition + 8, yPosition + height - FOOTER + 7, statusColor);
             }
         }
@@ -458,13 +630,13 @@ public class ClientPanel {
         }
     }
 
-    /** Строка списка: иконка машины, имя, признаки. */
+    /** Строка кандидата: слот с иконкой машины, имя, подпись CRIB, признаки. */
     private class RowButton extends GuiButton {
 
         final int slot;
 
-        RowButton(int id, int x, int y, int w, int h, int slot) {
-            super(id, x, y, w, h, "");
+        RowButton(int id, int slot) {
+            super(id, 0, 0, 1, 1, "");
             this.slot = slot;
         }
 
@@ -477,42 +649,59 @@ public class ClientPanel {
             if (!visible || scroll + slot >= entries.size()) return;
             Net.Entry e = entries.get(scroll + slot);
             boolean hover = hovered(mx, my);
-            // Строка — светлая плашка на утопленном поле; подходящие помечены цветной полоской слева.
-            drawRect(xPosition, yPosition, xPosition + width, yPosition + height, hover ? 0xFFDADADA : GUI_FILL);
-            drawRect(xPosition, yPosition + height, xPosition + width, yPosition + height + 1, 0xFF8B8B8B);
+            boolean pressed = hover && org.lwjgl.input.Mouse.isButtonDown(0);
+            // Выпуклая плитка; при наведении — голубоватая подсветка, как выделение в AE2.
+            drawRaised(xPosition + 1, yPosition + 1, width - 2, height - 2, hover ? 0xFFD3DCE8 : GUI_FILL, pressed);
             int stripe = (e.flags & Net.Entry.MOLD_MATCH) != 0 ? 0xFF2E9E2E
                 : (e.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 0xFFC03030
                     : (e.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0xFF4A7FC0 : 0xFF8B8B8B;
-            drawRect(xPosition, yPosition, xPosition + 2, yPosition + height, stripe);
-            drawSlot(xPosition + 4, yPosition + (height - 18) / 2);
-            if (hover) drawRect(
-                xPosition + 5,
-                yPosition + (height - 18) / 2 + 1,
-                xPosition + 21,
-                yPosition + (height - 18) / 2 + 17,
-                0x80FFFFFF);
-            if (e.icon != null) {
-                GL11.glPushMatrix();
-                RenderHelper.enableGUIStandardItemLighting();
-                GL11.glEnable(GL12.GL_RESCALE_NORMAL);
-                ITEM_RENDER.renderItemAndEffectIntoGUI(
-                    mc.fontRenderer,
-                    mc.getTextureManager(),
-                    e.icon,
-                    xPosition + 5,
-                    yPosition + (height - 18) / 2 + 1);
-                RenderHelper.disableStandardItemLighting();
-                GL11.glDisable(GL11.GL_LIGHTING);
-                GL11.glPopMatrix();
-            }
+            drawRect(xPosition + 2, yPosition + 2, xPosition + 5, yPosition + height - 2, stripe);
+            drawRect(xPosition + 2, yPosition + 2, xPosition + 3, yPosition + height - 2, 0x40FFFFFF);
+            int sy = yPosition + (height - 18) / 2;
+            drawSlot(xPosition + 7, sy);
+            drawItem(mc, e.icon, xPosition + 8, sy + 1);
+            if (hover) drawRect(xPosition + 8, sy + 1, xPosition + 24, sy + 17, 0x60FFFFFF);
             FontRenderer fr = mc.fontRenderer;
-            int tx = xPosition + 26, tw = width - 29;
+            int tx = xPosition + 29, tw = width - 33;
             fr.drawString(fr.trimStringToWidth(e.name, tw), tx, yPosition + 2, GUI_TEXT);
             if (e.suffix != null && !e.suffix.isEmpty()) {
-                // Подписи CRIB бывают цветными (§); на светлом фоне их цвета не трогаем, только базовый тёмный.
                 fr.drawString(fr.trimStringToWidth(e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
             }
             fr.drawString(fr.trimStringToWidth(flagsLine(e, false), tw), tx, yPosition + 22, GUI_TEXT_DIM);
+        }
+    }
+
+    /** Строка конфликта: машина, где уже есть шаблон на этот результат. Кнопка «Извлечь» — отдельная. */
+    private class ConflictRow extends GuiButton {
+
+        final int slot;
+
+        ConflictRow(int id, int slot) {
+            super(id, 0, 0, 1, 1, "");
+            this.slot = slot;
+            this.enabled = false;
+        }
+
+        @Override
+        public void drawButton(Minecraft mc, int mx, int my) {
+            if (!visible || slot >= conflicts.size()) return;
+            Net.Entry e = conflicts.get(slot);
+            drawRaised(xPosition + 1, yPosition + 1, width - 2, height - 2, 0xFFD9CDB8, false);
+            drawRect(xPosition + 2, yPosition + 2, xPosition + 5, yPosition + height - 2, 0xFFD08A1E);
+            int sy = yPosition + (height - 18) / 2;
+            drawSlot(xPosition + 7, sy);
+            drawItem(mc, e.icon, xPosition + 8, sy + 1);
+            FontRenderer fr = mc.fontRenderer;
+            int tx = xPosition + 29, tw = width - 29 - 60;
+            fr.drawString(fr.trimStringToWidth(e.name, tw), tx, yPosition + 2, GUI_TEXT);
+            if (e.suffix != null && !e.suffix.isEmpty()) {
+                fr.drawString(fr.trimStringToWidth(e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
+            }
+        }
+
+        @Override
+        public boolean mousePressed(Minecraft mc, int mx, int my) {
+            return false;
         }
     }
 }
