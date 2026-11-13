@@ -22,11 +22,13 @@ import net.minecraft.util.IChatComponent;
 import net.minecraft.util.StatCollector;
 import net.minecraftforge.client.event.GuiScreenEvent;
 
+import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.items.misc.ItemEncodedPattern;
+import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.ObfuscationReflectionHelper;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
@@ -84,6 +86,10 @@ public class ClientPanel {
     private GuiButton side;
     /** Where layoutHorizontal() actually put the panel. */
     private boolean onRight = true;
+    /** Dragging the panel by its title: mouse offset from the panel corner. */
+    private boolean dragging;
+    private int dragDX, dragDY;
+    private static final boolean NEI = Loader.isModLoaded("NotEnoughItems");
     // Block positions computed in relayout()
     private int listY, noteY, confY;
 
@@ -168,7 +174,27 @@ public class ClientPanel {
         }
         if (pattern != null) currentPattern = pattern;
         visible = pattern != null || System.currentTimeMillis() < statusUntil;
+        if (dragging) drag(e.mouseX, e.mouseY);
         relayout();
+    }
+
+    /** Follow the mouse while the button is held; on release push off NEI's page bar and save. */
+    private void drag(int mx, int my) {
+        int left = field("guiLeft", "field_147003_i");
+        int top = field("guiTop", "field_147009_r");
+        if (Mouse.isButtonDown(0)) {
+            Config.panelCustom = true;
+            Config.panelX = clamp(mx - dragDX, 2, gui.width - pw - 2) - left;
+            Config.panelY = clamp(my - dragDY, 2, gui.height - ph - 2) - top;
+            layoutHorizontal();
+            return;
+        }
+        dragging = false;
+        int y = top + Config.panelY;
+        int bar = neiBarBottom(px, pw, y);
+        // Dropped onto NEI's page bar: move just below it.
+        if (bar > y) Config.panelY = Math.min(bar, gui.height - ph - 2) - top;
+        Config.savePanelPos();
     }
 
     @SubscribeEvent
@@ -300,6 +326,13 @@ public class ClientPanel {
     private void layoutHorizontal() {
         int left = field("guiLeft", "field_147003_i");
         int xSize = field("xSize", "field_146999_f");
+        if (Config.panelCustom) {
+            // Dragged by the player: keep the offset from the terminal, stay on screen.
+            pw = Math.max(MIN_W, Math.min(MAX_W, gui.width - 4));
+            px = clamp(left + Config.panelX, 2, gui.width - pw - 2);
+            onRight = px + pw / 2 >= left + xSize / 2;
+            return;
+        }
         int rightX = left + xSize + RIGHT_GAP;
         int rightSpace = gui.width - rightX - 4;
         int leftEdge = left - LEFT_GAP;
@@ -341,7 +374,13 @@ public class ClientPanel {
             footer = Math.max(FOOTER, lines * 10 + 10);
         }
         ph = HEADER + Math.max(body, 12) + footer;
-        py = Math.max(2, Math.min(top, gui.height - ph - 2));
+        if (Config.panelCustom) {
+            py = clamp(top + Config.panelY, 2, gui.height - ph - 2);
+        } else {
+            py = Math.max(2, Math.min(top, gui.height - ph - 2));
+            // Don't cover NEI's page bar ("< 1/3 >") above its item/bookmark list.
+            py = Math.max(py, neiBarBottom(px, pw, py));
+        }
         listY = py + HEADER;
         noteY = listY + shown * ROW_H + (shown > 0 ? 4 : 0);
         confY = noteY + (noteLines > 0 ? noteLines * 10 + 4 : 0);
@@ -381,6 +420,22 @@ public class ClientPanel {
         side.yPosition = py + 4;
         side.displayString = onRight ? "◀" : "▶";
         side.visible = visible;
+    }
+
+    private static int clamp(int v, int min, int max) {
+        return Math.max(min, Math.min(v, Math.max(min, max)));
+    }
+
+    /** Bottom (plus a gap) of the lowest NEI page bar the panel at (x, y) would cover; 0 if none or no NEI. */
+    private int neiBarBottom(int x, int w, int y) {
+        if (!NEI) return 0;
+        int bottom = 0;
+        for (int[] r : NeiCompat.pageBars()) {
+            boolean overlapX = x < r[0] + r[2] && x + w > r[0];
+            boolean overlapY = r[1] < y + ph && r[1] + r[3] + 2 > y;
+            if (overlapX && overlapY) bottom = Math.max(bottom, r[1] + r[3] + 2);
+        }
+        return bottom;
     }
 
     private int field(String dev, String srg) {
@@ -670,8 +725,22 @@ public class ClientPanel {
             }
         }
 
+        /** A press on the title bar (not on the side arrow) starts dragging; never counts as a button click. */
         @Override
         public boolean mousePressed(Minecraft mc, int mx, int my) {
+            boolean inTitle = visible && mx >= xPosition
+                && mx < xPosition + width
+                && my >= yPosition
+                && my < yPosition + HEADER;
+            boolean onArrow = side != null && mx >= side.xPosition
+                && mx < side.xPosition + side.width
+                && my >= side.yPosition
+                && my < side.yPosition + side.height;
+            if (inTitle && !onArrow) {
+                dragging = true;
+                dragDX = mx - px;
+                dragDY = my - py;
+            }
             return false;
         }
     }
