@@ -1,0 +1,21 @@
+{
+	"modListVersion": 2,
+	"modList": [{
+		"modid": "${modId}",
+		"name": "${modName}",
+		"description": "Pattern terminal side panel: upload the freshly encoded pattern into the ME interface or CRIB whose GregTech machine runs this recipe (with the right mold). Needed on client and server.",
+		"version": "${modVersion}",
+		"mcversion": "${minecraftVersion}",
+		"url": "",
+		"updateUrl": "",
+		"authorList": ["PlainGooD"],
+		"credits": "Idea from GregTech Odyssey (gtocore) and AE2 Auto Pattern Upload (GaLicn).",
+		"logoFile": "",
+		"screenshots": [],
+		"parent": "",
+		"requiredMods": [],
+		"dependencies": [],
+		"dependants": [],
+		"useDependencyInformation": false
+	}]
+}
