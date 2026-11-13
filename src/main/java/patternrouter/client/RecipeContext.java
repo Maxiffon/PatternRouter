@@ -49,10 +49,21 @@ public final class RecipeContext {
         }
     }
 
-    /** The recipe is fresh and its result matches the pattern output (otherwise the pattern was made by hand). */
+    /** Forget the recipe (e.g. when leaving a server). */
+    public static void clear() {
+        category = "";
+        nonConsumables = Collections.emptyList();
+        result = null;
+        time = 0;
+    }
+
+    /**
+     * The recipe is fresh and its result matches the pattern output (otherwise the pattern was made by hand). When
+     * either side is unknown, don't guess: the server infers the machine from the pattern itself.
+     */
     public static boolean appliesTo(ItemStack patternOutput) {
         if (time == 0 || System.currentTimeMillis() - time > TTL_MS) return false;
-        if (result == null || patternOutput == null) return true;
+        if (result == null || patternOutput == null) return false;
         return result.getItem() == patternOutput.getItem()
             && (result.getItemDamage() == patternOutput.getItemDamage() || result.getItemDamage() == 32767);
     }

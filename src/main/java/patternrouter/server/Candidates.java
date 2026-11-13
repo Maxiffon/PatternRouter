@@ -131,6 +131,7 @@ public final class Candidates {
         } else if (!canBuild(grid, player)) {
             reply.note = NOTE_DENIED;
         } else {
+            category = checkedCategory(category, nonConsumables, pattern, player.worldObj);
             List<Scored> scored = score(grid, player.worldObj, category, nonConsumables, pattern);
             // Look for conflicts across the whole network before filtering: the old recipe may be in another machine
             // type.
@@ -182,6 +183,21 @@ public final class Candidates {
             SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, refs, conflicts));
         }
         Net.CH.sendTo(reply, player);
+    }
+
+    /**
+     * The client sends the category of the last NEI transfer, which may belong to another pattern (encoded by hand,
+     * or in an earlier session). Keep it only if that recipe map has a recipe from this pattern's inputs (plus the NEI
+     * non-consumables) with the same output; otherwise drop it and let the pattern contents decide.
+     */
+    private static String checkedCategory(String category, List<ItemStack> nonConsumables, ItemStack pattern,
+        World world) {
+        RecipeMap<?> wanted = recipeMapOf(category);
+        if (wanted == null) return category;
+        PatternContents contents = PatternContents.of(pattern, world);
+        if (contents.isEmpty() || contents.recipeIn(wanted, nonConsumables) != null) return category;
+        PatternRouter.LOG.info("Ignoring NEI category '{}': the pattern is not a recipe of that machine", category);
+        return "";
     }
 
     /** Order: has space -> machine -> mold -> no duplicate -> name. */
