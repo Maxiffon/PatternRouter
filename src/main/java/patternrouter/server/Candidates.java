@@ -196,6 +196,11 @@ public final class Candidates {
         if (wanted == null) return category;
         PatternContents contents = PatternContents.of(pattern, world);
         if (contents.isEmpty() || contents.recipeIn(wanted, nonConsumables) != null) return category;
+        // Exact lookup can miss recipes whose inputs have alternatives (assembly line: any circuit of a tier).
+        // A recipe with the same output in that map is enough to trust the category.
+        try {
+            for (GTRecipe r : wanted.getAllRecipes()) if (contents.producedBy(r)) return category;
+        } catch (Throwable ignored) {}
         PatternRouter.LOG.info("Ignoring NEI category '{}': the pattern is not a recipe of that machine", category);
         return "";
     }
@@ -405,7 +410,7 @@ public final class Candidates {
             }
         }
 
-        private boolean producedBy(GTRecipe r) {
+        boolean producedBy(GTRecipe r) {
             if (outItem != null && r.mOutputs != null) {
                 for (ItemStack o : r.mOutputs) if (o != null && o.isItemEqual(outItem)) return true;
             }
