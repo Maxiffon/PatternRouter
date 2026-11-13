@@ -71,6 +71,7 @@ public final class Candidates {
     public static final int NOTE_DENIED = 3; // no build permission in this network
     public static final int NOTE_NO_MACHINE = 4; // no matching machine, showing all interfaces
     public static final int NOTE_UNKNOWN_RECIPE = 5; // not a GT recipe, or not transferred from NEI
+    public static final int NOTE_UNFORMED = 6; // no matching machine, and some hatch has no formed multiblock
 
     private static final int MAX_ENTRIES = 40;
 
@@ -158,7 +159,10 @@ public final class Candidates {
             for (Scored s : scored) anyMachine |= (s.flags & Net.Entry.RECIPE_MATCH) != 0;
             RecipeMap<?> wanted = recipeMapOf(category);
             // Machine found (via NEI or pattern contents): no note needed.
-            if (!anyMachine) reply.note = wanted == null ? NOTE_UNKNOWN_RECIPE : NOTE_NO_MACHINE;
+            boolean anyUnformed = false;
+            for (Scored s : scored) anyUnformed |= s.unformed;
+            if (!anyMachine)
+                reply.note = wanted == null ? NOTE_UNKNOWN_RECIPE : anyUnformed ? NOTE_UNFORMED : NOTE_NO_MACHINE;
             // Show only matching machines if any; otherwise every interface with free space.
             if (anyMachine) scored.removeIf(s -> (s.flags & Net.Entry.RECIPE_MATCH) == 0);
             else scored.removeIf(s -> s.free == 0);
@@ -196,6 +200,8 @@ public final class Candidates {
         String suffix;
         int free;
         int flags;
+        /** Feeds a GT hatch that no formed multiblock owns. */
+        boolean unformed;
         /** Slots holding a pattern with the same output. */
         final List<Integer> sameSlots = new ArrayList<>();
 
@@ -265,7 +271,20 @@ public final class Candidates {
         }
 
         Collection<RecipeMap<?>> maps = machineRecipeMaps(view);
-        if (maps.isEmpty()) return s;
+        if (wanted != null && !maps.contains(wanted)) {
+            PatternRouter.LOG.debug(
+                "  {} ({}): machine {}, maps {}, wanted {}",
+                s.name,
+                view.getClass()
+                    .getSimpleName(),
+                describeMachine(view),
+                mapNames(maps),
+                wanted.unlocalizedName);
+        }
+        if (maps.isEmpty()) {
+            s.unformed = hasUnownedHatch(view);
+            return s;
+        }
         boolean known = !contents.isEmpty();
         if (wanted != null) {
             if (!maps.contains(wanted)) return s;
@@ -548,6 +567,71 @@ public final class Candidates {
         return maps;
     }
 
+    /** A CRIB, or a bus next to an ME interface, that GT has not attached to a formed multiblock. */
+    private static boolean hasUnownedHatch(IInterfaceViewable view) {
+        TileEntity self = view.getTileEntity();
+        List<TileEntity> tes = new ArrayList<>();
+        tes.add(self);
+        if (view instanceof IInterfaceHost) tes.addAll(neighbours(self, ((IInterfaceHost) view).getTargets()));
+        for (TileEntity te : tes) {
+            if (!(te instanceof IGregTechTileEntity)) continue;
+            IMetaTileEntity mte = ((IGregTechTileEntity) te).getMetaTileEntity();
+            if (mte instanceof MTEHatchInputBus && ((MTEHatchAccessor) mte).patternrouter$getOwner() == null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Diagnostics: what the interface/hatch points at. */
+    private static String describeMachine(IInterfaceViewable view) {
+        StringBuilder b = new StringBuilder();
+        TileEntity self = view.getTileEntity();
+        describe(b, self, 0);
+        if (view instanceof IInterfaceHost) {
+            for (TileEntity n : neighbours(self, ((IInterfaceHost) view).getTargets())) {
+                b.append(" | side ");
+                describe(b, n, 0);
+            }
+        }
+        return b.toString();
+    }
+
+    private static void describe(StringBuilder b, TileEntity te, int depth) {
+        if (!(te instanceof IGregTechTileEntity)) {
+            b.append(
+                te == null ? "null"
+                    : te.getClass()
+                        .getSimpleName());
+            return;
+        }
+        IMetaTileEntity mte = ((IGregTechTileEntity) te).getMetaTileEntity();
+        b.append(
+            mte == null ? "noMTE"
+                : mte.getClass()
+                    .getSimpleName());
+        if (mte instanceof RecipeMapWorkable) {
+            b.append(" maps=")
+                .append(mapNames(((RecipeMapWorkable) mte).getAvailableRecipeMaps()));
+        }
+        if (mte instanceof MTEHatch && depth == 0) {
+            ChunkCoordinates owner = ((MTEHatchAccessor) mte).patternrouter$getOwner();
+            b.append(" owner=")
+                .append(owner == null ? "null" : owner.posX + "," + owner.posY + "," + owner.posZ);
+            World w = te.getWorldObj();
+            if (owner != null && w != null && w.blockExists(owner.posX, owner.posY, owner.posZ)) {
+                b.append(" -> ");
+                describe(b, w.getTileEntity(owner.posX, owner.posY, owner.posZ), 1);
+            }
+        }
+    }
+
+    private static String mapNames(Collection<RecipeMap<?>> maps) {
+        List<String> names = new ArrayList<>();
+        if (maps != null) for (RecipeMap<?> m : maps) names.add(m == null ? "null" : m.unlocalizedName);
+        return names.toString();
+    }
+
     private static Collection<RecipeMap<?>> recipeMapsOf(TileEntity te, int depth) {
         if (!(te instanceof IGregTechTileEntity)) return Collections.emptyList();
         IMetaTileEntity mte = ((IGregTechTileEntity) te).getMetaTileEntity();
@@ -608,7 +692,11 @@ public final class Candidates {
                     MTEMultiBlockBase multi = (MTEMultiBlockBase) cm;
                     if (multi.isInputSeparationEnabled() || multi.mInputBusses == null) continue;
                     for (MTEHatchInputBus bus : multi.mInputBusses) {
-                        if (bus != null && bus != mte && bus.getBaseMetaTileEntity() != null) {
+                        // Same rule as MTEMultiBlockBase.getStoredInputs(): a CRIB is listed among the buses but its
+                        // contents (patterns, manual slots) are never combined with them.
+                        if (bus != null && bus != mte
+                            && !(bus instanceof MTEHatchCraftingInputME)
+                            && bus.getBaseMetaTileEntity() != null) {
                             addInventory(held, bus, maps);
                         }
                     }

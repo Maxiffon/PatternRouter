@@ -27,3 +27,4 @@ patternrouter.conflict.more=…и ещё %s
 patternrouter.tip.extract=Вынуть старый шаблон из этой машины в инвентарь
 patternrouter.result.extracted=Старый шаблон в инвентаре: %s
 patternrouter.result.invfull=Инвентарь полон — шаблон не извлечён
+patternrouter.note.unformed=Машин с этим рецептом в сети нет. Есть люки без собранной машины — проверьте структуру многоблока.
