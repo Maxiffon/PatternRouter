@@ -16,6 +16,7 @@ import java.util.UUID;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.Container;
 import net.minecraft.inventory.IInventory;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChunkCoordinates;
@@ -23,6 +24,7 @@ import net.minecraft.util.IChatComponent;
 import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.oredict.OreDictionary;
 
 import appeng.api.AEApi;
 import appeng.api.config.SecurityPermissions;
@@ -41,12 +43,14 @@ import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.helpers.IInterfaceHost;
 import appeng.items.misc.ItemEncodedPattern;
+import gregtech.api.interfaces.IConfigurationCircuitSupport;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.interfaces.tileentity.RecipeMapWorkable;
 import gregtech.api.metatileentity.implementations.MTEBasicMachine;
 import gregtech.api.metatileentity.implementations.MTEHatch;
 import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
+import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 import gregtech.api.recipe.RecipeCategory;
 import gregtech.api.recipe.RecipeMap;
 import gregtech.api.util.GTRecipe;
@@ -158,6 +162,11 @@ public final class Candidates {
             // Show only matching machines if any; otherwise every interface with free space.
             if (anyMachine) scored.removeIf(s -> (s.flags & Net.Entry.RECIPE_MATCH) == 0);
             else scored.removeIf(s -> s.free == 0);
+            // If some machine fits, hide the ones configured for another recipe (wrong circuit/mold/lens).
+            // When nothing fits, they stay as "doesn't fit" so the player sees where to put the right item.
+            boolean anyFit = false;
+            for (Scored s : scored) anyFit |= (s.flags & Net.Entry.MOLD_MATCH) != 0;
+            if (anyFit) scored.removeIf(s -> (s.flags & Net.Entry.MOLD_MISMATCH) != 0);
             scored.sort(ORDER);
             if (scored.size() > MAX_ENTRIES) scored = new ArrayList<>(scored.subList(0, MAX_ENTRIES));
 
@@ -205,8 +214,8 @@ public final class Candidates {
         ItemStack pattern) {
         RecipeMap<?> wanted = recipeMapOf(category);
         ItemStack output = patternOutput(pattern, world);
-        // No NEI context: check machines against their recipe maps using the pattern contents.
-        PatternContents contents = wanted == null ? PatternContents.of(pattern, world) : null;
+        // Pattern inputs/output for the GT recipe lookup (with or without the NEI category).
+        PatternContents contents = PatternContents.of(pattern, world);
         List<Scored> out = new ArrayList<>();
         Set<IInterfaceViewable> seen = new HashSet<>();
         for (Class<? extends IInterfaceViewable> cls : AEApi.instance()
@@ -255,42 +264,58 @@ public final class Candidates {
                 }
         }
 
+        Collection<RecipeMap<?>> maps = machineRecipeMaps(view);
+        if (maps.isEmpty()) return s;
+        boolean known = !contents.isEmpty();
         if (wanted != null) {
-            Collection<RecipeMap<?>> maps = machineRecipeMaps(view);
-            if (maps.contains(wanted)) {
-                s.flags |= Net.Entry.RECIPE_MATCH;
-                if (!nonConsumables.isEmpty()) {
-                    List<ItemStack> held = machineHeldItems(view);
-                    boolean all = true;
-                    for (ItemStack need : nonConsumables) {
-                        boolean found = false;
-                        for (ItemStack h : held) {
-                            if (matches(need, h)) {
-                                found = true;
-                                break;
-                            }
-                        }
-                        all &= found;
-                    }
-                    s.flags |= all ? Net.Entry.MOLD_MATCH : Net.Entry.MOLD_MISMATCH;
+            if (!maps.contains(wanted)) return s;
+            s.flags |= Net.Entry.RECIPE_MATCH;
+            Held held = machineHeld(view, maps);
+            int fit = known ? fit(wanted, contents, held) : FIT_NONE;
+            if (fit == FIT_OK) s.flags |= Net.Entry.MOLD_MATCH;
+            else if (fit == FIT_EXTRA) s.flags |= Net.Entry.MOLD_MISMATCH;
+            else if (!nonConsumables.isEmpty()) {
+                // GT lookup failed (e.g. odd pattern amounts): fall back to the items NEI marked as not consumed.
+                boolean all = true;
+                for (ItemStack need : nonConsumables) {
+                    boolean found = false;
+                    for (ItemStack h : held.all) found |= matches(need, h);
+                    all &= found;
                 }
+                s.flags |= all ? Net.Entry.MOLD_MATCH : Net.Entry.MOLD_MISMATCH;
             }
-        } else if (contents != null && !contents.isEmpty()) {
-            // No category: look up a real GT recipe from the pattern inputs plus what the machine holds (mold,
-            // circuit).
-            // A recipe with the same output means the machine fits and its mold is right.
-            Collection<RecipeMap<?>> maps = machineRecipeMaps(view);
-            if (!maps.isEmpty()) {
-                List<ItemStack> held = machineHeldItems(view);
-                for (RecipeMap<?> map : maps) {
-                    if (contents.madeBy(map, held)) {
-                        s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
-                        break;
-                    }
+        } else if (known) {
+            // No category: the GT lookup alone decides which machine fits.
+            Held held = machineHeld(view, maps);
+            for (RecipeMap<?> map : maps) {
+                int fit = fit(map, contents, held);
+                if (fit == FIT_OK) {
+                    s.flags = (s.flags & ~Net.Entry.MOLD_MISMATCH) | Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
+                    break;
                 }
+                if (fit == FIT_EXTRA) s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MISMATCH;
             }
         }
         return s;
+    }
+
+    private static final int FIT_NONE = 0; // GT finds no recipe with this output
+    private static final int FIT_OK = 1; // recipe found, everything the machine is configured with is needed
+    private static final int FIT_EXTRA = 2; // recipe found, but the machine holds a circuit/mold/lens it doesn't need
+
+    /**
+     * Runs the same GT recipe lookup the machine would: pattern inputs plus everything the machine holds. Then each
+     * configuration item (circuit, mold, lens) is removed in turn; if the recipe is still found, that item is not
+     * part of it and would at best be ignored, at worst select another recipe.
+     */
+    private static int fit(RecipeMap<?> map, PatternContents contents, Held held) {
+        if (contents.recipeIn(map, held.all) == null) return FIT_NONE;
+        for (ItemStack x : held.config) {
+            List<ItemStack> without = new ArrayList<>();
+            for (ItemStack h : held.all) if (!sameItem(h, x)) without.add(h);
+            if (contents.recipeIn(map, without) != null) return FIT_EXTRA;
+        }
+        return FIT_OK;
     }
 
     /** Pattern inputs and main output in a form GT recipe lookup understands. */
@@ -327,8 +352,8 @@ public final class Candidates {
             return (items.isEmpty() && fluids.isEmpty()) || (outItem == null && outFluid == null);
         }
 
-        /** Whether the map has a recipe from these inputs (plus machine contents) with the same output. */
-        boolean madeBy(RecipeMap<?> map, List<ItemStack> held) {
+        /** A recipe in the map made from these inputs (plus machine contents) with the same output, or null. */
+        GTRecipe recipeIn(RecipeMap<?> map, List<ItemStack> held) {
             List<ItemStack> in = new ArrayList<>(items);
             in.addAll(held);
             try {
@@ -337,9 +362,11 @@ public final class Candidates {
                     .fluids(fluids.toArray(new FluidStack[0]))
                     .dontCheckStackSizes(true)
                     .findAll()
-                    .anyMatch(this::producedBy);
+                    .filter(this::producedBy)
+                    .findFirst()
+                    .orElse(null);
             } catch (Throwable t) {
-                return false;
+                return null;
             }
         }
 
@@ -538,31 +565,95 @@ public final class Candidates {
         return Collections.emptyList();
     }
 
-    /** Non-consumed items held by the machine: molds, lenses, circuits. */
-    private static List<ItemStack> machineHeldItems(IInterfaceViewable view) {
-        List<ItemStack> held = new ArrayList<>();
+    /** What the machine holds besides the pattern inputs. */
+    private static final class Held {
+
+        /** Everything that takes part in the machine's recipe lookup. */
+        final List<ItemStack> all = new ArrayList<>();
+        /** Configuration items among them: circuits, molds, lenses. */
+        final List<ItemStack> config = new ArrayList<>();
+    }
+
+    private static Held machineHeld(IInterfaceViewable view, Collection<RecipeMap<?>> maps) {
+        Held held = new Held();
         TileEntity self = view.getTileEntity();
         if (self instanceof IGregTechTileEntity) {
             IMetaTileEntity mte = ((IGregTechTileEntity) self).getMetaTileEntity();
             if (mte instanceof MTEHatchCraftingInputME) {
-                for (ItemStack s : ((MTEHatchCraftingInputME) mte).getSharedItems()) if (s != null) held.add(s);
+                // CRIB circuit + manual slots: shared by every pattern, all of it is configuration.
+                for (ItemStack s : ((MTEHatchCraftingInputME) mte).getSharedItems()) {
+                    if (s == null) continue;
+                    held.all.add(s);
+                    held.config.add(s);
+                }
             }
         }
         if (view instanceof IInterfaceHost) {
             for (TileEntity n : neighbours(self, ((IInterfaceHost) view).getTargets())) {
                 if (!(n instanceof IGregTechTileEntity)) continue;
-                IGregTechTileEntity gt = (IGregTechTileEntity) n;
-                IMetaTileEntity mte = gt.getMetaTileEntity();
+                IMetaTileEntity mte = ((IGregTechTileEntity) n).getMetaTileEntity();
                 if (mte instanceof MTEBasicMachine || mte instanceof MTEHatchInputBus) {
-                    // Input slots of a single-block machine or input bus: the mold sits there too.
-                    for (int i = 0; i < gt.getSizeInventory(); i++) {
-                        ItemStack s = gt.getStackInSlot(i);
-                        if (s != null) held.add(s);
+                    addInventory(held, mte, maps);
+                }
+                // Multiblock without input separation: GT combines all its input buses (molds, lenses may be in
+                // another one).
+                if (mte instanceof MTEHatchInputBus) {
+                    ChunkCoordinates owner = ((MTEHatchAccessor) mte).patternrouter$getOwner();
+                    World w = n.getWorldObj();
+                    if (owner == null || w == null || !w.blockExists(owner.posX, owner.posY, owner.posZ)) continue;
+                    TileEntity c = w.getTileEntity(owner.posX, owner.posY, owner.posZ);
+                    if (!(c instanceof IGregTechTileEntity)) continue;
+                    IMetaTileEntity cm = ((IGregTechTileEntity) c).getMetaTileEntity();
+                    if (!(cm instanceof MTEMultiBlockBase)) continue;
+                    MTEMultiBlockBase multi = (MTEMultiBlockBase) cm;
+                    if (multi.isInputSeparationEnabled() || multi.mInputBusses == null) continue;
+                    for (MTEHatchInputBus bus : multi.mInputBusses) {
+                        if (bus != null && bus != mte && bus.getBaseMetaTileEntity() != null) {
+                            addInventory(held, bus, maps);
+                        }
                     }
                 }
             }
         }
         return held;
+    }
+
+    /** Adds a GT machine's or bus's slots; the circuit slot and recipe non-consumables count as configuration. */
+    private static void addInventory(Held held, IMetaTileEntity mte, Collection<RecipeMap<?>> maps) {
+        int circuitSlot = -1;
+        if (mte instanceof IConfigurationCircuitSupport && ((IConfigurationCircuitSupport) mte).allowSelectCircuit()) {
+            circuitSlot = ((IConfigurationCircuitSupport) mte).getCircuitSlot();
+        }
+        for (int i = 0; i < mte.getSizeInventory(); i++) {
+            ItemStack s = mte.getStackInSlot(i);
+            if (s == null) continue;
+            held.all.add(s);
+            if (i == circuitSlot || isNonConsumable(s, maps)) held.config.add(s);
+        }
+    }
+
+    /** Per recipe map: items that some recipe uses without consuming them (stack size 0). */
+    private static final Map<RecipeMap<?>, Set<String>> NON_CONSUMABLES = new HashMap<>();
+
+    private static boolean isNonConsumable(ItemStack s, Collection<RecipeMap<?>> maps) {
+        String exact = Item.getIdFromItem(s.getItem()) + ":" + s.getItemDamage();
+        String any = Item.getIdFromItem(s.getItem()) + ":" + OreDictionary.WILDCARD_VALUE;
+        for (RecipeMap<?> map : maps) {
+            Set<String> kinds = NON_CONSUMABLES.computeIfAbsent(map, m -> {
+                Set<String> k = new HashSet<>();
+                for (GTRecipe r : m.getAllRecipes()) {
+                    if (r.mInputs == null) continue;
+                    for (ItemStack in : r.mInputs) {
+                        if (in != null && in.getItem() != null && in.stackSize == 0) {
+                            k.add(Item.getIdFromItem(in.getItem()) + ":" + in.getItemDamage());
+                        }
+                    }
+                }
+                return k;
+            });
+            if (kinds.contains(exact) || kinds.contains(any)) return true;
+        }
+        return false;
     }
 
     private static List<TileEntity> neighbours(TileEntity self, EnumSet<ForgeDirection> dirs) {
@@ -579,10 +670,17 @@ public final class Candidates {
         return out;
     }
 
+    /** Same item, wildcard damage, or a shared ore dictionary name (e.g. any lens of the same colour). */
     private static boolean matches(ItemStack need, ItemStack have) {
-        if (need == null || have == null || need.getItem() != have.getItem()) return false;
-        int dn = need.getItemDamage();
-        return dn == 32767 || dn == have.getItemDamage();
+        if (need == null || have == null || need.getItem() == null || have.getItem() == null) return false;
+        if (need.getItem() == have.getItem()) {
+            int dn = need.getItemDamage();
+            if (dn == OreDictionary.WILDCARD_VALUE || dn == have.getItemDamage()) return true;
+        }
+        for (int a : OreDictionary.getOreIDs(need)) {
+            for (int b : OreDictionary.getOreIDs(have)) if (a == b) return true;
+        }
+        return false;
     }
 
     private static boolean sameItem(ItemStack a, ItemStack b) {
