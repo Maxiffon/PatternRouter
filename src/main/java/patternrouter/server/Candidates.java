@@ -60,6 +60,7 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.interfaces.tileentity.RecipeMapWorkable;
 import gregtech.api.metatileentity.implementations.MTEBasicMachine;
 import gregtech.api.metatileentity.implementations.MTEHatch;
+import gregtech.api.metatileentity.implementations.MTEHatchInput;
 import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
 import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 import gregtech.api.recipe.RecipeCategory;
@@ -1178,6 +1179,9 @@ public final class Candidates {
                 if (mte instanceof MTEBasicMachine || mte instanceof MTEHatchInputBus) {
                     touchesItemInput = true;
                     if (addedBuses.add(mte)) addInventory(held, mte, maps);
+                } else if (mte instanceof MTEHatchInput && addedBuses.add(mte)) {
+                    // Fluid hatches may hold configuration too: GT++ Solidifier Hatch has a mold slot and a circuit.
+                    addInventory(held, mte, maps);
                 }
                 // Multiblock without input separation: GT combines all its input buses (circuit, mold, lens may be
                 // in another one than the hatch the interface touches, e.g. an interface on a fluid input hatch).
