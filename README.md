@@ -45,6 +45,22 @@ a large live server. Client and server need the same version (the network channe
 Install: put `patternrouter-<version>.jar` (not `-dev` / `-sources`) into `mods`. If only one side has the mod, players
 can still connect; the panel just finds nothing.
 
+## Performance
+A lookup runs only when a pattern is encoded or the terminal is opened, on the server thread; nothing runs per tick.
+
+`/patternrouter bench [runs]` (op) replays your last panel lookup (same pattern, network, NEI category) once per
+tick, skips 3 warm-up runs and prints the timings. Results on a live UIV-stage server, 669 interfaces/CRIBs, worst
+case (no NEI category: the GT lookup goes over every machine), 50 runs each:
+
+| first | min | median | p95 | max | mean |
+|---|---|---|---|---|---|
+| 19.7 ms | 12.8 | 14.4 | 18.3 | 19.4 | 14.9 |
+| 13.2 ms | 12.4 | 13.2 | 16.1 | 18.9 | 13.5 |
+| 14.5 ms | 12.0 | 12.6 | 14.6 | 15.9 | 12.8 |
+
+Every real request is timed in `logs/fml-server-latest.log` (debug); over 200 ms it is a console warning, over 2 s
+the server thread stack is logged.
+
 ## Panel position
 - Drag the panel by its title to put it anywhere; the position is kept relative to the terminal.
 - The arrow in the title snaps it back to the automatic place on the left or right.
