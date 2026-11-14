@@ -24,8 +24,9 @@ public final class Net {
     private Net() {}
 
     public static void init() {
-        // v3: entries carry positions, the request the NEI tab name; mismatched versions just don't talk.
-        CH = NetworkRegistry.INSTANCE.newSimpleChannel("patrouter3");
+        // v4: entries carry positions and configuration items, the request the NEI tab name. Mismatched versions just
+        // don't talk.
+        CH = NetworkRegistry.INSTANCE.newSimpleChannel("patrouter4");
         CH.registerMessage(Request.Handler.class, Request.class, 0, Side.SERVER);
         CH.registerMessage(Upload.Handler.class, Upload.class, 1, Side.SERVER);
         CH.registerMessage(CandidateList.Handler.class, CandidateList.class, 2, Side.CLIENT);
