@@ -12,12 +12,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.Container;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.util.IChatComponent;
@@ -131,6 +134,7 @@ public final class Candidates {
         } else if (!canBuild(grid, player)) {
             reply.note = NOTE_DENIED;
         } else {
+            long started = System.nanoTime();
             category = checkedCategory(category, nonConsumables, pattern, player.worldObj);
             List<Scored> scored = score(grid, player.worldObj, category, nonConsumables, pattern);
             // Look for conflicts across the whole network before filtering: the old recipe may be in another machine
@@ -149,13 +153,14 @@ public final class Candidates {
                 }
             }
             PatternRouter.LOG.info(
-                "Pattern upload for {}: category '{}', {} non-consumables, output {}, {} providers checked, {} conflicts",
+                "Pattern upload for {}: category '{}', {} non-consumables, output {}, {} providers checked, {} conflicts, {} ms",
                 player.getCommandSenderName(),
                 category,
                 nonConsumables.size(),
-                patternOutput(pattern, player.worldObj),
+                storedOutput(pattern, player.worldObj),
                 scored.size(),
-                conflicts.size());
+                conflicts.size(),
+                (System.nanoTime() - started) / 1_000_000);
             boolean anyMachine = false;
             for (Scored s : scored) anyMachine |= (s.flags & Net.Entry.RECIPE_MATCH) != 0;
             RecipeMap<?> wanted = recipeMapOf(category);
@@ -241,10 +246,11 @@ public final class Candidates {
     private static List<Scored> score(IGrid grid, World world, String category, List<ItemStack> nonConsumables,
         ItemStack pattern) {
         RecipeMap<?> wanted = recipeMapOf(category);
-        ItemStack output = patternOutput(pattern, world);
+        ItemStack output = storedOutput(pattern, world);
         // Pattern inputs/output for the GT recipe lookup (with or without the NEI category).
         PatternContents contents = PatternContents.of(pattern, world);
         List<Scored> out = new ArrayList<>();
+        CAN_MAKE.clear();
         Set<IInterfaceViewable> seen = new HashSet<>();
         for (Class<? extends IInterfaceViewable> cls : AEApi.instance()
             .registries()
@@ -282,7 +288,7 @@ public final class Candidates {
             if (in == null) {
                 if (inv.isItemValidForSlot(i, pattern)) s.free++;
             } else if (output != null && sameItem(
-                patternOutput(
+                storedOutput(
                     in,
                     view.getTileEntity() != null ? view.getTileEntity()
                         .getWorldObj() : null),
@@ -335,6 +341,7 @@ public final class Candidates {
             // No category: the GT lookup alone decides which machine fits.
             Held held = machineHeld(view, maps);
             for (RecipeMap<?> map : maps) {
+                if (!canMake(map, contents)) continue;
                 int fit = fit(map, contents, held);
                 if (fit == FIT_OK) {
                     s.flags = (s.flags & ~Net.Entry.MOLD_MISMATCH) | Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
@@ -344,6 +351,18 @@ public final class Candidates {
             }
         }
         return s;
+    }
+
+    /** Per request: does this recipe map have any recipe with the pattern's output (one scan per map). */
+    private static final Map<RecipeMap<?>, Boolean> CAN_MAKE = new HashMap<>();
+
+    private static boolean canMake(RecipeMap<?> map, PatternContents contents) {
+        return CAN_MAKE.computeIfAbsent(map, m -> {
+            try {
+                for (GTRecipe r : m.getAllRecipes()) if (contents.producedBy(r)) return true;
+            } catch (Throwable ignored) {}
+            return false;
+        });
     }
 
     private static final int FIT_NONE = 0; // GT finds no recipe with this output
@@ -375,8 +394,15 @@ public final class Candidates {
         /** Crafting (workbench) pattern, run by molecular assemblers. */
         boolean craftable;
 
+        /** The terminal's pattern is decoded several times per request; decoding a crafting pattern is slow. */
+        private static ItemStack lastPattern;
+        private static PatternContents lastContents;
+
         static PatternContents of(ItemStack pattern, World world) {
+            if (pattern != null && pattern == lastPattern && lastContents != null) return lastContents;
             PatternContents pc = new PatternContents();
+            lastPattern = pattern;
+            lastContents = pc;
             if (pattern == null || !(pattern.getItem() instanceof ICraftingPatternItem) || world == null) return pc;
             try {
                 ICraftingPatternDetails d = ((ICraftingPatternItem) pattern.getItem())
@@ -552,6 +578,35 @@ public final class Candidates {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /** Decoded outputs of patterns already seen; ItemStack has identity equality, entries go with the stacks. */
+    private static final Map<ItemStack, ItemStack> DECODED = new WeakHashMap<>();
+
+    /**
+     * Output of a pattern sitting in some interface, for conflict search over the whole network. Reads the first
+     * "out" entry of the pattern NBT directly: decoding a crafting pattern makes AE2 search all workbench recipes,
+     * which over thousands of patterns froze big servers for seconds. Full decoding (cached) only as a fallback.
+     */
+    private static ItemStack storedOutput(ItemStack pattern, World world) {
+        if (pattern == null) return null;
+        NBTTagCompound tag = pattern.getTagCompound();
+        if (tag != null) {
+            NBTTagList outs = tag.getTagList("out", 10);
+            for (int i = 0; i < outs.tagCount(); i++) {
+                NBTTagCompound t = outs.getCompoundTagAt(i);
+                if (t == null || t.hasNoTags()) continue;
+                try {
+                    ItemStack s = ItemStack.loadItemStackFromNBT(t);
+                    if (s != null && s.getItem() != null) return s;
+                } catch (Throwable ignored) {}
+                break; // first output is not a plain item (fluid, new format): decode instead
+            }
+        }
+        if (DECODED.containsKey(pattern)) return DECODED.get(pattern);
+        ItemStack out = patternOutput(pattern, world);
+        DECODED.put(pattern, out);
+        return out;
     }
 
     private static IGrid gridOf(ContainerPatternTerm term) {
