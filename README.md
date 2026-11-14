@@ -13,6 +13,8 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
   - A machine holding a circuit/mold/lens the recipe doesn't use is hidden when another machine fits, otherwise marked
     *doesn't fit*.
   - Works without NEI too.
+- **Crafting patterns** go to molecular assemblers: interfaces next to an AE2 Molecular Assembler and the GT Large
+  Molecular Assembler.
 - **Unformed multiblocks** are reported ("check the structure") instead of silently missing.
 - **Conflicts.** Shows patterns elsewhere in the network that already produce the same output, with an *Extract*
   button that moves the old pattern to your inventory.
