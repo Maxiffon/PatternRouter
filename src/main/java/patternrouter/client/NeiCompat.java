@@ -28,6 +28,16 @@ public final class NeiCompat {
         });
     }
 
+    /**
+     * NEI asks where the panel is only when it lays itself out, then keeps the result: without this it stays squeezed
+     * after the panel disappears.
+     */
+    public static void relayout(GuiContainer gui) {
+        try {
+            codechicken.nei.LayoutManager.layout(gui);
+        } catch (Throwable ignored) {}
+    }
+
     /** Page bars ("< 1/3 >") of the item and bookmark panels as {x, y, w, h}; empty when NEI is hidden. */
     public static List<int[]> pageBars() {
         List<int[]> out = new ArrayList<>();

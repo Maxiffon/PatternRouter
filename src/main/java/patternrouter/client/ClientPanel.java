@@ -463,7 +463,16 @@ public class ClientPanel {
         side.yPosition = py + 4;
         side.displayString = onRight ? "◀" : "▶";
         side.visible = visible;
+        // Let NEI re-lay itself out when the panel appears, disappears, moves or resizes (not while dragging).
+        long key = visible ? (((long) px & 0xFFFF) << 48) | (((long) py & 0xFFFF) << 32) | ((long) pw << 16) | ph : -1;
+        if (NEI && key != neiLayoutKey && !dragging) {
+            neiLayoutKey = key;
+            NeiCompat.relayout(gui);
+        }
     }
+
+    /** Panel area NEI last laid itself out around (-1: no panel). */
+    private long neiLayoutKey = Long.MIN_VALUE;
 
     private static int clamp(int v, int min, int max) {
         return Math.max(min, Math.min(v, Math.max(min, max)));
