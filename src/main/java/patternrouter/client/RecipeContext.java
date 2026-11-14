@@ -18,6 +18,8 @@ public final class RecipeContext {
     public static String category = "";
     public static List<ItemStack> nonConsumables = Collections.emptyList();
     public static ItemStack result;
+    /** NEI tab title in the player's language, e.g. "Fluid Solidifier". */
+    public static String machineName = "";
     public static long time;
 
     private RecipeContext() {}
@@ -39,6 +41,14 @@ public final class RecipeContext {
             }
             PositionedStack r = handler.getResultStack(recipeIndex);
             category = id == null ? "" : id;
+            String title;
+            try {
+                title = handler.getRecipeName();
+            } catch (Throwable t) {
+                title = "";
+            }
+            machineName = title == null ? ""
+                : net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(title);
             nonConsumables = nc;
             result = r == null || r.item == null ? null : r.item.copy();
             time = System.currentTimeMillis();
@@ -54,6 +64,7 @@ public final class RecipeContext {
         category = "";
         nonConsumables = Collections.emptyList();
         result = null;
+        machineName = "";
         time = 0;
     }
 

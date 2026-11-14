@@ -24,8 +24,8 @@ public final class Net {
     private Net() {}
 
     public static void init() {
-        CH = NetworkRegistry.INSTANCE.newSimpleChannel("patrouter2"); // v2: entries carry positions; old
-                                                                      // clients/servers just don't talk
+        // v3: entries carry positions, the request the NEI tab name; mismatched versions just don't talk.
+        CH = NetworkRegistry.INSTANCE.newSimpleChannel("patrouter3");
         CH.registerMessage(Request.Handler.class, Request.class, 0, Side.SERVER);
         CH.registerMessage(Upload.Handler.class, Upload.class, 1, Side.SERVER);
         CH.registerMessage(CandidateList.Handler.class, CandidateList.class, 2, Side.CLIENT);
@@ -76,12 +76,15 @@ public final class Net {
 
         public String category = "";
         public List<ItemStack> nonConsumables = new ArrayList<>();
+        /** NEI tab title in the player's language (e.g. "Fluid Solidifier"), for matching renamed interfaces. */
+        public String machineName = "";
 
         public Request() {}
 
-        public Request(String category, List<ItemStack> nonConsumables) {
+        public Request(String category, List<ItemStack> nonConsumables, String machineName) {
             this.category = category == null ? "" : category;
             this.nonConsumables = nonConsumables;
+            this.machineName = machineName == null ? "" : machineName;
         }
 
         @Override
@@ -92,6 +95,7 @@ public final class Net {
                 ItemStack s = ByteBufUtils.readItemStack(buf);
                 if (s != null) nonConsumables.add(s);
             }
+            machineName = ByteBufUtils.readUTF8String(buf);
         }
 
         @Override
@@ -100,6 +104,7 @@ public final class Net {
             int n = Math.min(nonConsumables.size(), 16);
             buf.writeByte(n);
             for (int i = 0; i < n; i++) ByteBufUtils.writeItemStack(buf, nonConsumables.get(i));
+            ByteBufUtils.writeUTF8String(buf, machineName.length() > 100 ? machineName.substring(0, 100) : machineName);
         }
 
         public static class Handler implements IMessageHandler<Request, IMessage> {
@@ -107,7 +112,8 @@ public final class Net {
             @Override
             public IMessage onMessage(Request msg, MessageContext ctx) {
                 EntityPlayerMP player = ctx.getServerHandler().playerEntity;
-                CommonProxy.runOnServer(() -> Candidates.handleRequest(player, msg.category, msg.nonConsumables));
+                CommonProxy.runOnServer(
+                    () -> Candidates.handleRequest(player, msg.category, msg.nonConsumables, msg.machineName));
                 return null;
             }
         }
@@ -160,6 +166,7 @@ public final class Net {
         public static final int HAS_SAME = 8; // already holds a pattern with the same output
         public static final int REMEMBERED = 16; // the player put this kind of pattern here before
         public static final int NO_FLUIDS = 32; // the pattern has fluid inputs, the provider can't push fluids
+        public static final int BY_NAME = 64; // machine not seen, but the interface name matches the NEI tab
 
         public ItemStack icon;
         public String name = "";

@@ -513,7 +513,8 @@ public class ClientPanel {
         Net.CH.sendToServer(
             new Net.Request(
                 ctx ? RecipeContext.category : "",
-                ctx ? RecipeContext.nonConsumables : Collections.emptyList()));
+                ctx ? RecipeContext.nonConsumables : Collections.emptyList(),
+                ctx ? RecipeContext.machineName : ""));
         entries = Collections.emptyList();
         conflicts = Collections.emptyList();
         note = -1;
@@ -597,6 +598,10 @@ public class ClientPanel {
                 I18n.format(
                     (e.flags & Net.Entry.NO_FLUIDS) != 0 ? "patternrouter.flag.nofluid"
                         : "patternrouter.flag.othermold"))
+            .append("  ");
+        else if ((e.flags & Net.Entry.BY_NAME) != 0) sb.append(warn)
+            .append("≈ ")
+            .append(I18n.format("patternrouter.flag.byname"))
             .append("  ");
         else if ((e.flags & Net.Entry.RECIPE_MATCH) != 0) sb.append(good)
             .append("✔ ")

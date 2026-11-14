@@ -38,3 +38,4 @@ patternrouter.flag.remembered=你的选择
 patternrouter.result.okcard=已安装样板容量卡，样板已上传：%s
 patternrouter.result.nocard=%s 已满，且未找到样板容量卡（背包和网络中都没有）
 patternrouter.result.maxcards=%s 已满，样板容量卡已达上限
+patternrouter.flag.byname=按名称

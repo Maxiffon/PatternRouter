@@ -131,7 +131,8 @@ public final class Candidates {
 
     // ------------------------------------------------------------------ list request
 
-    public static void handleRequest(EntityPlayerMP player, String category, List<ItemStack> nonConsumables) {
+    public static void handleRequest(EntityPlayerMP player, String category, List<ItemStack> nonConsumables,
+        String machineName) {
         Net.CandidateList reply = new Net.CandidateList();
         reply.token = nextToken++;
         Container open = player.openContainer;
@@ -150,6 +151,15 @@ public final class Candidates {
             long started = System.nanoTime();
             category = checkedCategory(category, nonConsumables, pattern, player.worldObj);
             List<Scored> scored = score(grid, player, player.worldObj, category, nonConsumables, pattern);
+            // Machine not seen (chest, conduit in between) but the interface is named after it: weak match.
+            if (recipeMapOf(category) != null) {
+                List<String> words = nameWords(machineName);
+                for (Scored s : scored) {
+                    if ((s.flags & Net.Entry.RECIPE_MATCH) == 0 && nameMatches(s.name, words)) {
+                        s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.BY_NAME;
+                    }
+                }
+            }
             // Providers this player chose before for this kind of pattern: offered first, even if no machine is seen.
             String key = choiceKey(category, nonConsumables, storedOutput(pattern, player.worldObj));
             Choices choices = key.isEmpty() ? null : Choices.get();
@@ -240,11 +250,52 @@ public final class Candidates {
         return "";
     }
 
+    /** Words too common in machine names to identify one. */
+    private static final Set<String> NAME_STOP = new HashSet<>(
+        java.util.Arrays.asList(
+            "большой",
+            "большая",
+            "малый",
+            "мега",
+            "промышленный",
+            "промышленная",
+            "продвинутый",
+            "машина",
+            "large",
+            "mega",
+            "industrial",
+            "advanced",
+            "machine",
+            "multiblock"));
+
+    /** Significant words of the NEI tab title: letters only, 4+ characters, not common words. */
+    private static List<String> nameWords(String title) {
+        List<String> out = new ArrayList<>();
+        if (title == null) return out;
+        for (String w : title.toLowerCase()
+            .split("[^\\p{L}]+")) {
+            if (w.length() >= 4 && !NAME_STOP.contains(w)) out.add(w);
+        }
+        return out;
+    }
+
+    /**
+     * The interface name contains one of the words, compared by the first 5 letters so word endings don't matter
+     * ("отвердитель" ~ "Отвердителя", "реактор" ~ "Хим реактор 2").
+     */
+    private static boolean nameMatches(String name, List<String> words) {
+        if (name == null || name.isEmpty() || words.isEmpty()) return false;
+        String n = name.toLowerCase();
+        for (String w : words) if (n.contains(w.length() > 5 ? w.substring(0, 5) : w)) return true;
+        return false;
+    }
+
     /** Order: has space -> machine -> mold -> no duplicate -> name. */
     private static final Comparator<Scored> ORDER = Comparator
         .<Scored>comparingInt(s -> (s.flags & Net.Entry.REMEMBERED) != 0 ? 0 : 1)
         .thenComparingInt(s -> s.free > 0 ? 0 : 1)
         .thenComparingInt(s -> (s.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0 : 1)
+        .thenComparingInt(s -> (s.flags & Net.Entry.BY_NAME) != 0 ? 1 : 0)
         .thenComparingInt(
             s -> (s.flags & Net.Entry.MOLD_MATCH) != 0 ? 0 : (s.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 2 : 1)
         .thenComparingInt(s -> (s.flags & Net.Entry.HAS_SAME) != 0 ? 1 : 0)
