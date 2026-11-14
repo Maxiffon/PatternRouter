@@ -538,6 +538,35 @@ public class ClientPanel {
     private static void prepare(Net.Entry e) {
         e.name = resolveName(e.name, e.icon);
         e.suffix = parseSuffix(e.suffix);
+        if (e.suffix.isEmpty() && !e.config.isEmpty()) e.suffix = configCaption(e.config);
+    }
+
+    /**
+     * "{[5], Mold (Ingot)}" from the items the machine is set up with. Names come from the item itself, as in
+     * tooltips: GT translates its items through its own language manager, not plain translation keys.
+     */
+    private static String configCaption(List<ItemStack> config) {
+        StringBuilder b = new StringBuilder("{");
+        for (ItemStack st : config) {
+            if (b.length() > 1) b.append(", ");
+            String n;
+            try {
+                n = isProgrammedCircuit(st) ? "[" + st.getItemDamage() + "]" : st.getDisplayName();
+            } catch (Throwable t) {
+                n = "?";
+            }
+            b.append(n);
+        }
+        return b.append("}")
+            .toString();
+    }
+
+    private static boolean isProgrammedCircuit(ItemStack st) {
+        try {
+            return gregtech.api.enums.ItemList.Circuit_Integrated.getItem() == st.getItem();
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private static String translate(String raw) {

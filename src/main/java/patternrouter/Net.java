@@ -175,6 +175,8 @@ public final class Net {
         public int flags;
         /** Provider position, for highlighting it in the world. */
         public int dim, x, y, z;
+        /** What the machine is set up with (circuit, mold, lens); the client builds the caption. */
+        public List<ItemStack> config = new ArrayList<>();
     }
 
     public static class CandidateList implements IMessage {
@@ -215,6 +217,11 @@ public final class Net {
                 e.x = buf.readInt();
                 e.y = buf.readInt();
                 e.z = buf.readInt();
+                int nc = buf.readUnsignedByte();
+                for (int k = 0; k < nc; k++) {
+                    ItemStack s = ByteBufUtils.readItemStack(buf);
+                    if (s != null) e.config.add(s);
+                }
                 list.add(e);
             }
         }
@@ -233,6 +240,9 @@ public final class Net {
                 buf.writeInt(e.x);
                 buf.writeInt(e.y);
                 buf.writeInt(e.z);
+                int nc = Math.min(e.config.size(), 6);
+                buf.writeByte(nc);
+                for (int k = 0; k < nc; k++) ByteBufUtils.writeItemStack(buf, e.config.get(k));
             }
         }
 

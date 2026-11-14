@@ -311,6 +311,8 @@ public final class Candidates {
         int free;
         int flags;
         int dim, x, y, z;
+        /** Configuration items (deduplicated) for the client-side caption. */
+        final List<ItemStack> config = new ArrayList<>();
         /** Feeds a GT hatch that no formed multiblock owns. */
         boolean unformed;
         /** Slots holding a pattern with the same output. */
@@ -327,6 +329,7 @@ public final class Candidates {
             e.x = x;
             e.y = y;
             e.z = z;
+            e.config.addAll(config);
             return e;
         }
     }
@@ -439,7 +442,7 @@ public final class Candidates {
                 cfg);
         }
         // AE2 captions only CRIBs; for other providers show what the machine is set up with ([5], mold, lens).
-        if (s.suffix.isEmpty() && !held.config.isEmpty()) s.suffix = configCaption(held.config);
+        if (s.suffix.isEmpty()) s.config.addAll(uniqueConfig(held.config));
         if (wanted != null) {
             if (!maps.contains(wanted)) return s;
             s.flags |= Net.Entry.RECIPE_MATCH;
@@ -489,6 +492,20 @@ public final class Candidates {
         }
         c.appendText("}");
         return IChatComponent.Serializer.func_150696_a(c);
+    }
+
+    private static List<ItemStack> uniqueConfig(List<ItemStack> config) {
+        List<ItemStack> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (ItemStack st : config) {
+            if (st != null && st.getItem() != null
+                && seen.add(Item.getIdFromItem(st.getItem()) + ":" + st.getItemDamage())) {
+                ItemStack one = st.copy();
+                one.stackSize = 1;
+                out.add(one);
+            }
+        }
+        return out;
     }
 
     private static boolean isCircuit(ItemStack st) {
