@@ -33,3 +33,7 @@ patternrouter.tip.side.right=Поставить панель справа (ил�
 patternrouter.note.noassembler=Шаблон крафта, но молекулярных сборщиков в сети нет. Показаны все интерфейсы со свободным местом.
 patternrouter.tip.highlight=Shift+клик — подсветить в мире
 patternrouter.tip.highlight.conflict=Клик — подсветить, где лежит старый шаблон
+patternrouter.flag.remembered=вы выбирали
+patternrouter.result.okcard=Добавлена карта расширения, шаблон загружен: %s
+patternrouter.result.nocard=Нет места в %s, карта расширения отсутствует (нет ни в инвентаре, ни в сети)
+patternrouter.result.maxcards=Нет места в %s, карт расширения уже максимум

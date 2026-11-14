@@ -318,6 +318,15 @@ public class ClientPanel {
             case Net.Result.OK:
                 setStatus(I18n.format("patternrouter.result.ok", name), good, 4000);
                 break;
+            case Net.Result.OK_CARD:
+                setStatus(I18n.format("patternrouter.result.okcard", name), good, 5000);
+                break;
+            case Net.Result.NO_CARD:
+                setStatus(I18n.format("patternrouter.result.nocard", name), bad, 5000);
+                break;
+            case Net.Result.MAX_CARDS:
+                setStatus(I18n.format("patternrouter.result.maxcards", name), bad, 5000);
+                break;
             case Net.Result.EXTRACTED:
                 setStatus(I18n.format("patternrouter.result.extracted", name), good, 4000);
                 lastKey = null; // refresh the conflict list
@@ -574,6 +583,10 @@ public class ClientPanel {
         String good = tooltip ? "§a" : "§2", bad = tooltip ? "§c" : "§4", warn = tooltip ? "§e" : "§6",
             dim = tooltip ? "§7" : "§8";
         StringBuilder sb = new StringBuilder();
+        if ((e.flags & Net.Entry.REMEMBERED) != 0) sb.append(warn)
+            .append("★ ")
+            .append(I18n.format("patternrouter.flag.remembered"))
+            .append("  ");
         if ((e.flags & Net.Entry.MOLD_MATCH) != 0) sb.append(good)
             .append("✔ ")
             .append(I18n.format("patternrouter.flag.mold"))

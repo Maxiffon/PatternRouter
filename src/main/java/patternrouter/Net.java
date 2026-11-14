@@ -158,6 +158,7 @@ public final class Net {
         public static final int MOLD_MATCH = 2; // the required molds/circuits are in the machine
         public static final int MOLD_MISMATCH = 4; // right machine, wrong mold/circuit
         public static final int HAS_SAME = 8; // already holds a pattern with the same output
+        public static final int REMEMBERED = 16; // the player put this kind of pattern here before
 
         public ItemStack icon;
         public String name = "";
@@ -246,6 +247,9 @@ public final class Net {
         public static final int DENIED = 4;
         public static final int EXTRACTED = 5;
         public static final int INV_FULL = 6;
+        public static final int OK_CARD = 7; // uploaded after adding a Pattern Capacity Card
+        public static final int NO_CARD = 8; // full, and no capacity card in inventory or network
+        public static final int MAX_CARDS = 9; // full, and no more capacity cards fit
 
         public int code;
         public String name = "";

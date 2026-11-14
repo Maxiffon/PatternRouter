@@ -32,6 +32,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.oredict.OreDictionary;
 
 import appeng.api.AEApi;
+import appeng.api.config.Actionable;
 import appeng.api.config.SecurityPermissions;
 import appeng.api.implementations.ICraftingPatternItem;
 import appeng.api.networking.IGrid;
@@ -40,14 +41,18 @@ import appeng.api.networking.IGridNode;
 import appeng.api.networking.crafting.ICraftingPatternDetails;
 import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.ISecurityGrid;
+import appeng.api.networking.security.PlayerSource;
+import appeng.api.networking.storage.IStorageGrid;
 import appeng.api.storage.StorageName;
 import appeng.api.storage.data.IAEFluidStack;
 import appeng.api.storage.data.IAEItemStack;
 import appeng.api.storage.data.IAEStack;
+import appeng.api.util.DimensionalCoord;
 import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.helpers.IInterfaceHost;
 import appeng.items.misc.ItemEncodedPattern;
+import appeng.util.item.AEItemStack;
 import gregtech.api.enums.ItemList;
 import gregtech.api.interfaces.IConfigurationCircuitSupport;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
@@ -88,9 +93,12 @@ public final class Candidates {
         final WeakReference<Container> container;
         final List<WeakReference<IInterfaceViewable>> targets;
         final List<Conflict> conflicts;
+        /** What is being placed (see choiceKey), remembered on upload. */
+        final String key;
 
         Session(int token, Container container, List<WeakReference<IInterfaceViewable>> targets,
-            List<Conflict> conflicts) {
+            List<Conflict> conflicts, String key) {
+            this.key = key;
             this.token = token;
             this.container = new WeakReference<>(container);
             this.targets = targets;
@@ -142,6 +150,16 @@ public final class Candidates {
             long started = System.nanoTime();
             category = checkedCategory(category, nonConsumables, pattern, player.worldObj);
             List<Scored> scored = score(grid, player.worldObj, category, nonConsumables, pattern);
+            // Providers this player chose before for this kind of pattern: offered first, even if no machine is seen.
+            String key = choiceKey(category, nonConsumables, storedOutput(pattern, player.worldObj));
+            Choices choices = key.isEmpty() ? null : Choices.get();
+            if (choices != null) {
+                List<int[]> mem = choices.remembered(player.getUniqueID(), key);
+                for (Scored s : scored) {
+                    int[] p = { s.dim, s.x, s.y, s.z };
+                    for (int[] m : mem) if (Choices.same(m, p)) s.flags |= Net.Entry.REMEMBERED;
+                }
+            }
             // Look for conflicts across the whole network before filtering: the old recipe may be in another machine
             // type.
             List<Conflict> conflicts = new ArrayList<>();
@@ -181,13 +199,14 @@ public final class Candidates {
             if (!anyMachine) reply.note = crafting ? NOTE_NO_ASSEMBLER
                 : wanted == null ? NOTE_UNKNOWN_RECIPE : anyUnformed ? NOTE_UNFORMED : NOTE_NO_MACHINE;
             // Show only matching machines if any; otherwise every interface with free space.
-            if (anyMachine) scored.removeIf(s -> (s.flags & Net.Entry.RECIPE_MATCH) == 0);
-            else scored.removeIf(s -> s.free == 0);
+            if (anyMachine) scored.removeIf(s -> (s.flags & (Net.Entry.RECIPE_MATCH | Net.Entry.REMEMBERED)) == 0);
+            else scored.removeIf(s -> s.free == 0 && (s.flags & Net.Entry.REMEMBERED) == 0);
             // If some machine fits, hide the ones configured for another recipe (wrong circuit/mold/lens).
             // When nothing fits, they stay as "doesn't fit" so the player sees where to put the right item.
             boolean anyFit = false;
             for (Scored s : scored) anyFit |= (s.flags & Net.Entry.MOLD_MATCH) != 0;
-            if (anyFit) scored.removeIf(s -> (s.flags & Net.Entry.MOLD_MISMATCH) != 0);
+            if (anyFit)
+                scored.removeIf(s -> (s.flags & Net.Entry.MOLD_MISMATCH) != 0 && (s.flags & Net.Entry.REMEMBERED) == 0);
             scored.sort(ORDER);
             if (scored.size() > MAX_ENTRIES) scored = new ArrayList<>(scored.subList(0, MAX_ENTRIES));
 
@@ -196,7 +215,7 @@ public final class Candidates {
                 refs.add(new WeakReference<>(s.view));
                 reply.entries.add(s.toEntry());
             }
-            SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, refs, conflicts));
+            SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, refs, conflicts, key));
         }
         Net.CH.sendTo(reply, player);
     }
@@ -222,7 +241,9 @@ public final class Candidates {
     }
 
     /** Order: has space -> machine -> mold -> no duplicate -> name. */
-    private static final Comparator<Scored> ORDER = Comparator.<Scored>comparingInt(s -> s.free > 0 ? 0 : 1)
+    private static final Comparator<Scored> ORDER = Comparator
+        .<Scored>comparingInt(s -> (s.flags & Net.Entry.REMEMBERED) != 0 ? 0 : 1)
+        .thenComparingInt(s -> s.free > 0 ? 0 : 1)
         .thenComparingInt(s -> (s.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0 : 1)
         .thenComparingInt(
             s -> (s.flags & Net.Entry.MOLD_MATCH) != 0 ? 0 : (s.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 2 : 1)
@@ -599,23 +620,136 @@ public final class Candidates {
             Net.CH.sendTo(new Net.Result(Net.Result.NO_PATTERN, rawName(view)), player);
             return;
         }
-        IInventory target = view.getPatterns();
-        int slots = Math.min(target.getSizeInventory(), numSlots(view));
-        for (int i = 0; i < slots; i++) {
-            if (target.getStackInSlot(i) == null && target.isItemValidForSlot(i, pattern)) {
-                ItemStack one = pattern.copy();
-                one.stackSize = 1;
-                target.setInventorySlotContents(i, one);
-                target.markDirty();
-                pattern.stackSize--;
-                patternInv.setInventorySlotContents(1, pattern.stackSize > 0 ? pattern : null);
-                term.detectAndSendChanges();
-                Net.CH.sendTo(new Net.Result(Net.Result.OK, rawName(view)), player);
-                PatternRouter.LOG.debug("{} uploaded a pattern to {}", player.getCommandSenderName(), rawName(view));
+        int slot = freeSlot(view, pattern);
+        boolean cardAdded = false;
+        if (slot < 0) {
+            // Full: put a Pattern Capacity Card in (player inventory first, then the network).
+            int card = addCapacityCard(view, grid, term, player);
+            if (card != CARD_ADDED) {
+                Net.CH.sendTo(new Net.Result(card, rawName(view)), player);
+                return;
+            }
+            cardAdded = true;
+            slot = freeSlot(view, pattern);
+            if (slot < 0) {
+                Net.CH.sendTo(new Net.Result(Net.Result.FULL, rawName(view)), player);
                 return;
             }
         }
-        Net.CH.sendTo(new Net.Result(Net.Result.FULL, rawName(view)), player);
+        IInventory target = view.getPatterns();
+        ItemStack one = pattern.copy();
+        one.stackSize = 1;
+        target.setInventorySlotContents(slot, one);
+        target.markDirty();
+        pattern.stackSize--;
+        patternInv.setInventorySlotContents(1, pattern.stackSize > 0 ? pattern : null);
+        term.detectAndSendChanges();
+        rememberChoice(player, session.key, view);
+        Net.CH.sendTo(new Net.Result(cardAdded ? Net.Result.OK_CARD : Net.Result.OK, rawName(view)), player);
+        PatternRouter.LOG.debug("{} uploaded a pattern to {}", player.getCommandSenderName(), rawName(view));
+    }
+
+    private static int freeSlot(IInterfaceViewable view, ItemStack pattern) {
+        IInventory target = view.getPatterns();
+        if (target == null) return -1;
+        int slots = Math.min(target.getSizeInventory(), numSlots(view));
+        for (int i = 0; i < slots; i++) {
+            if (target.getStackInSlot(i) == null && target.isItemValidForSlot(i, pattern)) return i;
+        }
+        return -1;
+    }
+
+    // ------------------------------------------------------------------ pattern capacity card
+
+    private static final int CARD_ADDED = -1;
+
+    /** Installs one Pattern Capacity Card into an AE2 interface; returns CARD_ADDED or a Net.Result code. */
+    private static int addCapacityCard(IInterfaceViewable view, IGrid grid, ContainerPatternTerm term,
+        EntityPlayerMP player) {
+        if (!(view instanceof IInterfaceHost)) return Net.Result.FULL; // CRIB, LMA: no upgrade slots
+        try {
+            IInventory upgrades = ((IInterfaceHost) view).getInterfaceDuality()
+                .getInventoryByName("upgrades");
+            ItemStack card = AEApi.instance()
+                .definitions()
+                .materials()
+                .cardPatternCapacity()
+                .maybeStack(1)
+                .orNull();
+            if (upgrades == null || card == null) return Net.Result.FULL;
+            int slot = -1;
+            for (int i = 0; i < upgrades.getSizeInventory() && slot < 0; i++) {
+                // AE2's upgrade inventory refuses cards beyond the per-type maximum.
+                if (upgrades.getStackInSlot(i) == null && upgrades.isItemValidForSlot(i, card)) slot = i;
+            }
+            if (slot < 0) return Net.Result.MAX_CARDS;
+            if (!takeFromPlayer(player, card) && !takeFromNetwork(grid, term, player, card)) {
+                return Net.Result.NO_CARD;
+            }
+            upgrades.setInventorySlotContents(slot, card.copy());
+            upgrades.markDirty();
+            return CARD_ADDED;
+        } catch (Throwable t) {
+            PatternRouter.LOG.debug("Cannot add a capacity card to {}: {}", rawName(view), t.toString());
+            return Net.Result.FULL;
+        }
+    }
+
+    private static boolean takeFromPlayer(EntityPlayerMP player, ItemStack card) {
+        ItemStack[] inv = player.inventory.mainInventory;
+        for (int i = 0; i < inv.length; i++) {
+            if (inv[i] != null && inv[i].isItemEqual(card) && ItemStack.areItemStackTagsEqual(inv[i], card)) {
+                player.inventory.decrStackSize(i, 1);
+                player.inventory.markDirty();
+                player.inventoryContainer.detectAndSendChanges();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean takeFromNetwork(IGrid grid, ContainerPatternTerm term, EntityPlayerMP player,
+        ItemStack card) {
+        ISecurityGrid security = grid.getCache(ISecurityGrid.class);
+        if (security != null && !security.hasPermission(player, SecurityPermissions.EXTRACT)) return false;
+        IStorageGrid storage = grid.getCache(IStorageGrid.class);
+        if (storage == null) return false;
+        Object target = term.getTarget();
+        IActionHost host = target instanceof IActionHost ? (IActionHost) target : null;
+        IAEItemStack got = storage.getItemInventory()
+            .extractItems(AEItemStack.create(card), Actionable.MODULATE, new PlayerSource(player, host));
+        return got != null && got.getStackSize() >= 1;
+    }
+
+    // ------------------------------------------------------------------ remembered choices
+
+    /** What the player is placing: recipe category plus its circuit/mold/lens, or the output if no category. */
+    private static String choiceKey(String category, List<ItemStack> nonConsumables, ItemStack output) {
+        if (category != null && !category.isEmpty()) {
+            List<String> nc = new ArrayList<>();
+            for (ItemStack s : nonConsumables) {
+                if (s != null && s.getItem() != null) nc.add(Item.getIdFromItem(s.getItem()) + ":" + s.getItemDamage());
+            }
+            Collections.sort(nc);
+            return "cat:" + category + "|" + String.join(",", nc);
+        }
+        return output == null || output.getItem() == null ? ""
+            : "out:" + Item.itemRegistry.getNameForObject(output.getItem()) + ":" + output.getItemDamage();
+    }
+
+    private static int[] position(IInterfaceViewable view) {
+        try {
+            DimensionalCoord c = view.getLocation();
+            return new int[] { c.getDimension(), c.x, c.y, c.z };
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static void rememberChoice(EntityPlayerMP player, String key, IInterfaceViewable view) {
+        int[] pos = position(view);
+        Choices c = key == null || key.isEmpty() || pos == null ? null : Choices.get();
+        if (c != null) c.remember(player.getUniqueID(), key, pos);
     }
 
     // ------------------------------------------------------------------ helpers
