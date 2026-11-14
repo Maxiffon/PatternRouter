@@ -159,6 +159,7 @@ public final class Net {
         public static final int MOLD_MISMATCH = 4; // right machine, wrong mold/circuit
         public static final int HAS_SAME = 8; // already holds a pattern with the same output
         public static final int REMEMBERED = 16; // the player put this kind of pattern here before
+        public static final int NO_FLUIDS = 32; // the pattern has fluid inputs, the provider can't push fluids
 
         public ItemStack icon;
         public String name = "";

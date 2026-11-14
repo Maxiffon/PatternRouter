@@ -302,7 +302,12 @@ public final class Candidates {
                     IInventory inv = view.getPatterns();
                     if (inv == null) continue;
                     try {
-                        out.add(scoreOne(view, inv, wanted, nonConsumables, pattern, output, contents));
+                        Scored s = scoreOne(view, inv, wanted, nonConsumables, pattern, output, contents);
+                        // Fluid inputs need a provider that can push fluids (CRIB buffer, dual interface).
+                        if (!contents.fluids.isEmpty() && !acceptsFluids(view)) {
+                            s.flags = (s.flags & ~Net.Entry.MOLD_MATCH) | Net.Entry.MOLD_MISMATCH | Net.Entry.NO_FLUIDS;
+                        }
+                        out.add(s);
                     } catch (Throwable t) {
                         PatternRouter.LOG.debug("Skipping provider {}: {}", view.getName(), t.toString());
                     }
@@ -527,7 +532,7 @@ public final class Candidates {
                     .fluids(fluids.toArray(new FluidStack[0]))
                     .dontCheckStackSizes(true)
                     .findAll()
-                    .filter(this::producedBy)
+                    .filter(this::producedInProportion)
                     .findFirst()
                     .orElse(null);
             } catch (Throwable t) {
@@ -543,6 +548,60 @@ public final class Candidates {
                 for (FluidStack o : r.mFluidOutputs) if (o != null && o.isFluidEqual(outFluid)) return true;
             }
             return false;
+        }
+
+        /**
+         * Same output and the same proportions: the pattern must be k times the recipe (k = pattern output / recipe
+         * output), so "1 ingot -> 2 rods" fits the extruder (1 -> 2) but not the lathe (1 -> 1 rod + dust). Inputs
+         * the recipe lists differently (ore dictionary variants) are not compared.
+         */
+        boolean producedInProportion(GTRecipe r) {
+            if (!producedBy(r)) return false;
+            long k = multiplier(r);
+            if (k <= 0) return k == 0; // 0: nothing to compare against, accept
+            if (r.mInputs != null) {
+                for (ItemStack need : r.mInputs) {
+                    if (need == null || need.stackSize <= 0) continue; // non-consumed (circuit, mold, lens)
+                    for (ItemStack have : items) {
+                        if (have != null && have.isItemEqual(need)) {
+                            if (have.stackSize != k * need.stackSize) return false;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (r.mFluidInputs != null) {
+                for (FluidStack need : r.mFluidInputs) {
+                    if (need == null || need.amount <= 0) continue;
+                    for (FluidStack have : fluids) {
+                        if (have != null && have.isFluidEqual(need)) {
+                            if (have.amount != k * need.amount) return false;
+                            break;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        /** Pattern output / recipe output for the main output; 0 if unknown, -1 if not a whole multiple. */
+        private long multiplier(GTRecipe r) {
+            long pattern = 0, recipe = 0;
+            if (outItem != null && r.mOutputs != null) {
+                pattern = outItem.stackSize;
+                for (ItemStack o : r.mOutputs) if (o != null && o.isItemEqual(outItem)) {
+                    recipe = o.stackSize;
+                    break;
+                }
+            } else if (outFluid != null && r.mFluidOutputs != null) {
+                pattern = outFluid.amount;
+                for (FluidStack o : r.mFluidOutputs) if (o != null && o.isFluidEqual(outFluid)) {
+                    recipe = o.amount;
+                    break;
+                }
+            }
+            if (pattern <= 0 || recipe <= 0) return 0;
+            return pattern % recipe == 0 ? pattern / recipe : -1;
         }
     }
 
@@ -820,6 +879,33 @@ public final class Candidates {
         return node == null ? null : node.getGrid();
     }
 
+    /**
+     * Can this provider push fluids? GT CRIBs say so directly (the Crafting Input Bus can't); AE2 providers list
+     * their stack types (a plain interface: items only). Unknown builds: assume yes, never hide wrongly.
+     */
+    private static boolean acceptsFluids(IInterfaceViewable view) {
+        TileEntity te = view.getTileEntity();
+        if (te instanceof IGregTechTileEntity) {
+            IMetaTileEntity mte = ((IGregTechTileEntity) te).getMetaTileEntity();
+            if (mte instanceof MTEHatchCraftingInputME) return ((MTEHatchCraftingInputME) mte).supportsFluids();
+        }
+        try {
+            for (appeng.api.storage.data.IAEStackType<?> t : view.getSupportedStackTypes()) {
+                if (t != null && t.getId() != null
+                    && t.getId()
+                        .toLowerCase()
+                        .contains("fluid"))
+                    return true;
+            }
+            // Fluid-capable providers from add-ons that don't report types (dual interfaces).
+            return view.getClass()
+                .getName()
+                .matches("(?i).*(fluid|dual).*");
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
     /** Repeaters.reachable(), or just the grid on AE2 builds without Pattern Repeater (class missing). */
     private static List<IGrid> linkedGrids(IGrid grid) {
         try {
@@ -1045,6 +1131,12 @@ public final class Candidates {
                     IMetaTileEntity cm = ((IGregTechTileEntity) c).getMetaTileEntity();
                     if (!(cm instanceof MTEMultiBlockBase)) continue;
                     MTEMultiBlockBase multi = (MTEMultiBlockBase) cm;
+                    // GT also takes a programmed circuit from the controller's own slot (getStoredInputs).
+                    ItemStack ctrlCircuit = multi.getStackInSlot(1);
+                    if (ctrlCircuit != null && isCircuit(ctrlCircuit) && addedBuses.add(multi)) {
+                        held.all.add(ctrlCircuit);
+                        held.config.add(ctrlCircuit);
+                    }
                     if (multi.isInputSeparationEnabled() || multi.mInputBusses == null) continue;
                     for (MTEHatchInputBus bus : multi.mInputBusses) {
                         // Same rule as MTEMultiBlockBase.getStoredInputs(): a CRIB is listed among the buses but its

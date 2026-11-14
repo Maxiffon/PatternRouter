@@ -37,3 +37,4 @@ patternrouter.flag.remembered=your choice
 patternrouter.result.okcard=Added a Pattern Capacity Card, pattern uploaded: %s
 patternrouter.result.nocard=%s is full and no Pattern Capacity Card was found (inventory or network)
 patternrouter.result.maxcards=%s is full and holds the maximum of capacity cards
+patternrouter.flag.nofluid=doesn't take fluids

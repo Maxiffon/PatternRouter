@@ -37,3 +37,4 @@ patternrouter.flag.remembered=вы выбирали
 patternrouter.result.okcard=Добавлена карта расширения, шаблон загружен: %s
 patternrouter.result.nocard=Нет места в %s, карта расширения отсутствует (нет ни в инвентаре, ни в сети)
 patternrouter.result.maxcards=Нет места в %s, карт расширения уже максимум
+patternrouter.flag.nofluid=не принимает жидкость

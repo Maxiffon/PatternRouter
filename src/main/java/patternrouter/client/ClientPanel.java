@@ -593,7 +593,10 @@ public class ClientPanel {
             .append("  ");
         else if ((e.flags & Net.Entry.MOLD_MISMATCH) != 0) sb.append(bad)
             .append("✘ ")
-            .append(I18n.format("patternrouter.flag.othermold"))
+            .append(
+                I18n.format(
+                    (e.flags & Net.Entry.NO_FLUIDS) != 0 ? "patternrouter.flag.nofluid"
+                        : "patternrouter.flag.othermold"))
             .append("  ");
         else if ((e.flags & Net.Entry.RECIPE_MATCH) != 0) sb.append(good)
             .append("✔ ")
