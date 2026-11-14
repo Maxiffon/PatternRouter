@@ -35,6 +35,7 @@ public class CommonProxy {
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.START) return;
+        patternrouter.server.Bench.tick();
         Runnable r;
         int budget = 64;
         while (budget-- > 0 && (r = SERVER_TASKS.poll()) != null) {

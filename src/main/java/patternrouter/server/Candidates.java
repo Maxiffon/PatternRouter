@@ -134,14 +134,76 @@ public final class Candidates {
 
     public static void handleRequest(EntityPlayerMP player, String category, List<ItemStack> nonConsumables,
         String machineName) {
+        Net.CandidateList reply = buildReply(player, category, nonConsumables, machineName, false);
+        if (reply != null) Net.CH.sendTo(reply, player);
+    }
+
+    /** Providers checked by the last buildReply (for the benchmark). */
+    static int lastProviders;
+
+    /** The player's last panel request, replayed by /patternrouter bench. */
+    private static final class BenchContext {
+
+        final ItemStack pattern;
+        final WeakReference<IGrid> grid;
+        final String category;
+        final List<ItemStack> nonConsumables;
+        final String machineName;
+
+        BenchContext(ItemStack pattern, IGrid grid, String category, List<ItemStack> nonConsumables,
+            String machineName) {
+            this.pattern = pattern;
+            this.grid = new WeakReference<>(grid);
+            this.category = category;
+            this.nonConsumables = new ArrayList<>(nonConsumables);
+            this.machineName = machineName;
+        }
+    }
+
+    private static final Map<UUID, BenchContext> LAST_REQUEST = new HashMap<>();
+
+    static boolean hasBenchContext(EntityPlayerMP player) {
+        BenchContext c = LAST_REQUEST.get(player.getUniqueID());
+        return c != null && c.grid.get() != null;
+    }
+
+    static String benchCategory(EntityPlayerMP player) {
+        BenchContext c = LAST_REQUEST.get(player.getUniqueID());
+        return c == null ? "" : c.category;
+    }
+
+    /**
+     * The whole lookup for the pattern in the player's open terminal. Bench runs (/patternrouter bench) skip the log
+     * line and don't replace the player's session. Null if no pattern terminal is open.
+     */
+    static Net.CandidateList buildReply(EntityPlayerMP player, String category, List<ItemStack> nonConsumables,
+        String machineName, boolean bench) {
         Net.CandidateList reply = new Net.CandidateList();
         reply.token = nextToken++;
-        Container open = player.openContainer;
-        if (!(open instanceof ContainerPatternTerm)) return; // terminal already closed, ignore
-        ContainerPatternTerm term = (ContainerPatternTerm) open;
-
-        ItemStack pattern = encodedPattern(term);
-        IGrid grid = gridOf(term);
+        ContainerPatternTerm term = null;
+        ItemStack pattern;
+        IGrid grid;
+        if (bench) {
+            // Replay the player's last real request (the terminal is closed while typing the command).
+            BenchContext c = LAST_REQUEST.get(player.getUniqueID());
+            if (c == null || c.grid.get() == null) return null;
+            pattern = c.pattern;
+            grid = c.grid.get();
+            category = c.category;
+            nonConsumables = c.nonConsumables;
+            machineName = c.machineName;
+        } else {
+            Container open = player.openContainer;
+            if (!(open instanceof ContainerPatternTerm)) return null; // terminal already closed, ignore
+            term = (ContainerPatternTerm) open;
+            pattern = encodedPattern(term);
+            grid = gridOf(term);
+            if (pattern != null && grid != null) {
+                LAST_REQUEST.put(
+                    player.getUniqueID(),
+                    new BenchContext(pattern.copy(), grid, category, nonConsumables, machineName));
+            }
+        }
         if (pattern == null) {
             reply.note = NOTE_NO_PATTERN;
         } else if (grid == null) {
@@ -188,8 +250,9 @@ public final class Candidates {
             }
             long ms = (System.nanoTime() - started) / 1_000_000;
             // Debug goes to logs/fml-server-latest.log only; the console gets a line only for slow requests.
-            org.apache.logging.log4j.Level level = ms >= SLOW_MS ? org.apache.logging.log4j.Level.WARN
-                : org.apache.logging.log4j.Level.DEBUG;
+            lastProviders = scored.size();
+            org.apache.logging.log4j.Level level = bench ? org.apache.logging.log4j.Level.TRACE
+                : ms >= SLOW_MS ? org.apache.logging.log4j.Level.WARN : org.apache.logging.log4j.Level.DEBUG;
             PatternRouter.LOG.log(
                 level,
                 "Pattern upload for {}: category '{}', {} non-consumables, output {}, {} providers checked, {} conflicts, {} ms",
@@ -226,9 +289,9 @@ public final class Candidates {
                 refs.add(new WeakReference<>(s.view));
                 reply.entries.add(s.toEntry());
             }
-            SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, refs, conflicts, key));
+            if (!bench) SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, refs, conflicts, key));
         }
-        Net.CH.sendTo(reply, player);
+        return reply;
     }
 
     /**

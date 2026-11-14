@@ -7,6 +7,8 @@ import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import cpw.mods.fml.common.event.FMLServerStartingEvent;
+import patternrouter.server.Bench;
 
 /**
  * Side panel in the AE2 pattern terminal: put the freshly encoded pattern straight into the ME interface or CRIB
@@ -40,5 +42,10 @@ public class PatternRouter {
     public void init(FMLInitializationEvent event) {
         proxy.init();
         LOG.info("{} {} loaded", NAME, Tags.VERSION);
+    }
+
+    @Mod.EventHandler
+    public void serverStarting(FMLServerStartingEvent event) {
+        event.registerServerCommand(new Bench());
     }
 }
