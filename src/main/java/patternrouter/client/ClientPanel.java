@@ -44,6 +44,8 @@ public class ClientPanel {
 
     private static final int MAX_W = 204;
     private static final int MIN_W = 150;
+    /** Narrowest the panel gets to stay off the terminal on a small screen. */
+    private static final int FIT_W = 110;
     /** Gap right of the terminal: AE2 view cell / upgrade column. */
     private static final int RIGHT_GAP = 28;
     /** Gap left of the terminal: AE2 sort / view button column. */
@@ -357,28 +359,29 @@ public class ClientPanel {
     private void layoutHorizontal() {
         int left = field("guiLeft", "field_147003_i");
         int xSize = field("xSize", "field_146999_f");
-        if (Config.panelCustom) {
-            // Dragged by the player: keep the offset from the terminal, stay on screen.
-            pw = Math.max(MIN_W, Math.min(MAX_W, gui.width - 4));
-            px = clamp(left + Config.panelX, 2, gui.width - pw - 2);
-            onRight = px + pw / 2 >= left + xSize / 2;
-            return;
-        }
+        // The terminal with AE2's button column (left) and cell column (right) is never covered: Minecraft draws
+        // slot items after buttons, so they would show through the panel and clicks would reach the slots.
         int rightX = left + xSize + RIGHT_GAP;
-        int rightSpace = gui.width - rightX - 4;
+        int rightSpace = gui.width - rightX - 2;
         int leftEdge = left - LEFT_GAP;
-        int leftSpace = leftEdge - 4;
-        boolean preferLeft = "left".equalsIgnoreCase(Config.panelSide);
-        boolean useRight = preferLeft ? leftSpace < MIN_W && rightSpace >= leftSpace
-            : rightSpace >= MIN_W || rightSpace >= leftSpace;
-        onRight = useRight;
-        if (useRight) {
-            pw = Math.max(MIN_W, Math.min(MAX_W, rightSpace));
-            px = rightX;
+        int leftSpace = leftEdge - 2;
+        boolean useRight;
+        if (Config.panelCustom) {
+            // Dragged: keep the side the player chose (by the panel centre).
+            int wanted = left + Config.panelX;
+            useRight = wanted + pw / 2 >= left + xSize / 2;
+            if (!useRight && leftSpace < FIT_W && rightSpace > leftSpace) useRight = true;
+            if (useRight && rightSpace < FIT_W && leftSpace > rightSpace) useRight = false;
+            pw = Math.max(FIT_W, Math.min(MAX_W, useRight ? rightSpace : leftSpace));
+            px = useRight ? clamp(wanted, rightX, gui.width - pw - 2) : clamp(wanted, 2, leftEdge - pw);
         } else {
-            pw = Math.max(MIN_W, Math.min(MAX_W, leftSpace));
-            px = Math.max(2, leftEdge - pw);
+            boolean preferLeft = "left".equalsIgnoreCase(Config.panelSide);
+            useRight = preferLeft ? leftSpace < MIN_W && rightSpace > leftSpace
+                : rightSpace >= MIN_W || rightSpace >= leftSpace;
+            pw = Math.max(FIT_W, Math.min(MAX_W, useRight ? rightSpace : leftSpace));
+            px = useRight ? rightX : Math.max(2, leftEdge - pw);
         }
+        onRight = useRight;
     }
 
     /** Vertical layout by content: list, note, conflicts, status line. */

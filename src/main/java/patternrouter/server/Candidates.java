@@ -302,7 +302,10 @@ public final class Candidates {
         s.name = rawName(view);
         IChatComponent suffix = nameSuffix(view);
         // Sent as JSON so the client translates it in the player's language.
-        s.suffix = suffix == null ? "" : IChatComponent.Serializer.func_150696_a(suffix);
+        // AE2 returns an empty component (not null) for plain interfaces: treat it as "no caption".
+        s.suffix = suffix == null || suffix.getUnformattedText()
+            .trim()
+            .isEmpty() ? "" : IChatComponent.Serializer.func_150696_a(suffix);
 
         int slots = Math.min(inv.getSizeInventory(), numSlots(view));
         for (int i = 0; i < slots; i++) {
@@ -343,6 +346,17 @@ public final class Candidates {
         }
         boolean known = !contents.isEmpty();
         Held held = machineHeld(view, maps);
+        if (PatternRouter.LOG.isDebugEnabled()) {
+            List<String> cfg = new ArrayList<>();
+            for (ItemStack st : held.config) cfg.add(st.getUnlocalizedName() + "@" + st.getItemDamage());
+            PatternRouter.LOG.debug(
+                "  {}: machine {}, maps {}, held {} items, config {}",
+                s.name,
+                describeMachine(view),
+                mapNames(maps),
+                held.all.size(),
+                cfg);
+        }
         // AE2 captions only CRIBs; for other providers show what the machine is set up with ([5], mold, lens).
         if (s.suffix.isEmpty() && !held.config.isEmpty()) s.suffix = configCaption(held.config);
         if (wanted != null) {
@@ -795,6 +809,10 @@ public final class Candidates {
         if (mte instanceof RecipeMapWorkable) {
             b.append(" maps=")
                 .append(mapNames(((RecipeMapWorkable) mte).getAvailableRecipeMaps()));
+        }
+        if (mte instanceof MTEMultiBlockBase) {
+            b.append(" separation=")
+                .append(((MTEMultiBlockBase) mte).isInputSeparationEnabled());
         }
         if (mte instanceof MTEHatch && depth == 0) {
             ChunkCoordinates owner = Owners.ownerOf(mte, te.getWorldObj());
