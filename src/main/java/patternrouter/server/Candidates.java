@@ -110,6 +110,8 @@ public final class Candidates {
     }
 
     private static final int MAX_CONFLICTS = 8;
+    /** Requests slower than this are reported in the console. */
+    private static final long SLOW_MS = 200;
 
     private static final Map<UUID, Session> SESSIONS = new HashMap<>();
     private static int nextToken = 1;
@@ -152,7 +154,12 @@ public final class Candidates {
                     reply.conflicts.add(e);
                 }
             }
-            PatternRouter.LOG.info(
+            long ms = (System.nanoTime() - started) / 1_000_000;
+            // Debug goes to logs/fml-server-latest.log only; the console gets a line only for slow requests.
+            org.apache.logging.log4j.Level level = ms >= SLOW_MS ? org.apache.logging.log4j.Level.WARN
+                : org.apache.logging.log4j.Level.DEBUG;
+            PatternRouter.LOG.log(
+                level,
                 "Pattern upload for {}: category '{}', {} non-consumables, output {}, {} providers checked, {} conflicts, {} ms",
                 player.getCommandSenderName(),
                 category,
@@ -160,7 +167,7 @@ public final class Candidates {
                 storedOutput(pattern, player.worldObj),
                 scored.size(),
                 conflicts.size(),
-                (System.nanoTime() - started) / 1_000_000);
+                ms);
             boolean anyMachine = false;
             for (Scored s : scored) anyMachine |= (s.flags & Net.Entry.RECIPE_MATCH) != 0;
             RecipeMap<?> wanted = recipeMapOf(category);
@@ -207,7 +214,7 @@ public final class Candidates {
         try {
             for (GTRecipe r : wanted.getAllRecipes()) if (contents.producedBy(r)) return category;
         } catch (Throwable ignored) {}
-        PatternRouter.LOG.info("Ignoring NEI category '{}': the pattern is not a recipe of that machine", category);
+        PatternRouter.LOG.debug("Ignoring NEI category '{}': the pattern is not a recipe of that machine", category);
         return "";
     }
 
@@ -265,7 +272,7 @@ public final class Candidates {
                 try {
                     out.add(scoreOne(view, inv, wanted, nonConsumables, pattern, output, contents));
                 } catch (Throwable t) {
-                    PatternRouter.LOG.warn("Skipping provider {}: {}", view.getName(), t.toString());
+                    PatternRouter.LOG.debug("Skipping provider {}: {}", view.getName(), t.toString());
                 }
             }
         }
