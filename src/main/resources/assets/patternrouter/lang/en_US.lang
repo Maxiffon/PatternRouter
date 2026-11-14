@@ -30,3 +30,4 @@ patternrouter.result.invfull=Inventory full — pattern not extracted
 patternrouter.note.unformed=No machine in the network runs this recipe. Some hatches belong to no formed multiblock: check the structure.
 patternrouter.tip.side.left=Snap the panel to the left (or drag it by the title)
 patternrouter.tip.side.right=Snap the panel to the right (or drag it by the title)
+patternrouter.note.noassembler=Crafting pattern, but no molecular assembler in the network. Showing all interfaces with free space.

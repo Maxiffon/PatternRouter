@@ -577,6 +577,8 @@ public class ClientPanel {
                 return I18n.format("patternrouter.note.unknown");
             case Candidates.NOTE_UNFORMED:
                 return I18n.format("patternrouter.note.unformed");
+            case Candidates.NOTE_NO_ASSEMBLER:
+                return I18n.format("patternrouter.note.noassembler");
             default:
                 return entries.isEmpty() && note >= 0 ? I18n.format("patternrouter.note.empty") : "";
         }

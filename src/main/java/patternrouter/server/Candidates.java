@@ -72,6 +72,7 @@ public final class Candidates {
     public static final int NOTE_NO_MACHINE = 4; // no matching machine, showing all interfaces
     public static final int NOTE_UNKNOWN_RECIPE = 5; // not a GT recipe, or not transferred from NEI
     public static final int NOTE_UNFORMED = 6; // no matching machine, and some hatch has no formed multiblock
+    public static final int NOTE_NO_ASSEMBLER = 7; // crafting pattern, no molecular assembler in the network
 
     private static final int MAX_ENTRIES = 40;
 
@@ -162,8 +163,9 @@ public final class Candidates {
             // Machine found (via NEI or pattern contents): no note needed.
             boolean anyUnformed = false;
             for (Scored s : scored) anyUnformed |= s.unformed;
-            if (!anyMachine)
-                reply.note = wanted == null ? NOTE_UNKNOWN_RECIPE : anyUnformed ? NOTE_UNFORMED : NOTE_NO_MACHINE;
+            boolean crafting = PatternContents.of(pattern, player.worldObj).craftable;
+            if (!anyMachine) reply.note = crafting ? NOTE_NO_ASSEMBLER
+                : wanted == null ? NOTE_UNKNOWN_RECIPE : anyUnformed ? NOTE_UNFORMED : NOTE_NO_MACHINE;
             // Show only matching machines if any; otherwise every interface with free space.
             if (anyMachine) scored.removeIf(s -> (s.flags & Net.Entry.RECIPE_MATCH) == 0);
             else scored.removeIf(s -> s.free == 0);
@@ -291,6 +293,12 @@ public final class Candidates {
                 }
         }
 
+        if (contents.craftable) {
+            // Crafting pattern: AE2 itself knows which providers craft (interface next to a molecular assembler,
+            // GT Large Molecular Assembler).
+            if (craftingProvider(view)) s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
+            return s;
+        }
         Collection<RecipeMap<?>> maps = machineRecipeMaps(view);
         if (wanted != null && !maps.contains(wanted)) {
             PatternRouter.LOG.debug(
@@ -365,6 +373,8 @@ public final class Candidates {
         final List<FluidStack> fluids = new ArrayList<>();
         ItemStack outItem;
         FluidStack outFluid;
+        /** Crafting (workbench) pattern, run by molecular assemblers. */
+        boolean craftable;
 
         static PatternContents of(ItemStack pattern, World world) {
             PatternContents pc = new PatternContents();
@@ -373,6 +383,7 @@ public final class Candidates {
                 ICraftingPatternDetails d = ((ICraftingPatternItem) pattern.getItem())
                     .getPatternForItem(pattern, world);
                 if (d == null) return pc;
+                pc.craftable = d.isCraftable();
                 for (IAEStack<?> st : d.getCondensedAEInputs()) {
                     if (st instanceof IAEItemStack) pc.items.add(((IAEItemStack) st).getItemStack());
                     else if (st instanceof IAEFluidStack) pc.fluids.add(((IAEFluidStack) st).getFluidStack());
@@ -586,6 +597,14 @@ public final class Candidates {
             for (TileEntity n : neighbours(self, host.getTargets())) maps.addAll(recipeMapsOf(n, 0));
         }
         return maps;
+    }
+
+    private static boolean craftingProvider(IInterfaceViewable view) {
+        try {
+            return view.isCraftingPatternProvider();
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** A CRIB, or a bus next to an ME interface, that GT has not attached to a formed multiblock. */
