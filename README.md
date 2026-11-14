@@ -5,6 +5,8 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
 
 ![logo](src/main/resources/assets/patternrouter/logo.png)
 
+![Pattern terminal with the panel](docs/overview-crafting.png)
+
 ## Features
 - **Machine match by recipe map**, not by name. Renamed interfaces still work.
 - **Mold / circuit / lens check** with the real GT recipe lookup: pattern inputs plus what the machine holds (CRIB
@@ -26,6 +28,9 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
 - **Unformed multiblocks** are reported ("check the structure") instead of silently missing.
 - **Conflicts.** Shows patterns elsewhere in the network that already produce the same output, with an *Extract*
   button that moves the old pattern to your inventory.
+
+  ![Conflict](docs/conflict.png)
+
 - **Highlight**: Shift+click a row (or click a conflict) to highlight the interface in the world.
 - **Respects AE2 security** (build permission).
 - English, Russian, Chinese.
