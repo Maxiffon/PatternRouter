@@ -97,6 +97,9 @@ public class ClientPanel {
 
     // State
     private String lastKey;
+    /** When to send the request for lastKey (ms), -1 = already sent. */
+    private long sendAt = -1;
+    private static final long DEBOUNCE_MS = 150;
     private int token;
     private List<Net.Entry> entries = Collections.emptyList();
     private List<Net.Entry> conflicts = Collections.emptyList();
@@ -166,8 +169,20 @@ public class ClientPanel {
         ItemStack pattern = findPattern();
         if (pattern != null) {
             String key = keyOf(pattern);
+            long now = System.currentTimeMillis();
             if (!key.equals(lastKey)) {
+                // A fresh pattern is asked for at once; while it keeps changing (x2 / /2 clicks) wait until it
+                // stays the same for a moment, so the server gets one request instead of one per click.
+                boolean fresh = lastKey == null;
                 lastKey = key;
+                sendAt = fresh ? now : now + DEBOUNCE_MS;
+                entries = Collections.emptyList();
+                conflicts = Collections.emptyList();
+                note = -1;
+                waiting = true;
+            }
+            if (sendAt >= 0 && now >= sendAt) {
+                sendAt = -1;
                 request(pattern);
             }
         } else if (lastKey != null) {
@@ -300,7 +315,7 @@ public class ClientPanel {
     // ------------------------------------------------------------------ server replies
 
     public void onCandidates(Net.CandidateList msg) {
-        if (gui == null) return;
+        if (gui == null || sendAt >= 0) return; // the pattern changed since; its own request is about to go out
         for (Net.Entry e : msg.entries) prepare(e);
         for (Net.Entry e : msg.conflicts) prepare(e);
         token = msg.token;
@@ -575,6 +590,7 @@ public class ClientPanel {
     private void resetList() {
         // Ask again for the same pattern next time; otherwise a reopened terminal showed an empty panel.
         lastKey = null;
+        sendAt = -1;
         entries = Collections.emptyList();
         conflicts = Collections.emptyList();
         note = -1;

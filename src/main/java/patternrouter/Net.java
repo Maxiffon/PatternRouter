@@ -113,11 +113,19 @@ public final class Net {
             @Override
             public IMessage onMessage(Request msg, MessageContext ctx) {
                 EntityPlayerMP player = ctx.getServerHandler().playerEntity;
-                CommonProxy.runOnServer(
-                    () -> Candidates.handleRequest(player, msg.category, msg.nonConsumables, msg.machineName));
+                // Coalesce: if the player sends a newer request before this one runs, only the newest is worked out.
+                // The new one is queued at the end, so it never jumps ahead of an Upload sent in between.
+                Object ticket = new Object();
+                LATEST.put(player.getUniqueID(), ticket);
+                CommonProxy.runOnServer(() -> {
+                    if (!LATEST.remove(player.getUniqueID(), ticket)) return; // superseded
+                    Candidates.handleRequest(player, msg.category, msg.nonConsumables, msg.machineName);
+                });
                 return null;
             }
         }
+
+        private static final java.util.Map<java.util.UUID, Object> LATEST = new java.util.concurrent.ConcurrentHashMap<>();
     }
 
     /** Put the pattern into candidate #index of list #token. */

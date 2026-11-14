@@ -38,7 +38,11 @@ public class CommonProxy {
         patternrouter.server.Bench.tick();
         Runnable r;
         int budget = 64;
-        while (budget-- > 0 && (r = SERVER_TASKS.poll()) != null) {
+        // At most ~25 ms of lookups per tick (half a tick); the rest waits for the next tick. At least one task runs.
+        long deadline = System.nanoTime() + TICK_BUDGET_NS;
+        boolean first = true;
+        while (budget-- > 0 && (first || System.nanoTime() < deadline) && (r = SERVER_TASKS.poll()) != null) {
+            first = false;
             // If a task runs long, log where the server thread is, so a freeze can be attributed for sure.
             Thread server = Thread.currentThread();
             ScheduledFuture<?> watch = WATCHDOG.schedule(() -> {
@@ -62,6 +66,7 @@ public class CommonProxy {
     }
 
     private static final long SLOW_TASK_MS = 2000;
+    private static final long TICK_BUDGET_NS = 25_000_000L;
 
     private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "PatternRouter-watchdog");
