@@ -391,7 +391,7 @@ public final class Candidates {
         if (wanted != null) {
             if (!maps.contains(wanted)) return s;
             s.flags |= Net.Entry.RECIPE_MATCH;
-            int fit = known ? fit(wanted, contents, held) : FIT_NONE;
+            int fit = known ? fitAny(wanted, contents, held) : FIT_NONE;
             if (fit == FIT_OK) s.flags |= Net.Entry.MOLD_MATCH;
             else if (fit == FIT_EXTRA) s.flags |= Net.Entry.MOLD_MISMATCH;
             else if (!nonConsumables.isEmpty()) {
@@ -408,7 +408,7 @@ public final class Candidates {
             // No category: the GT lookup alone decides which machine fits.
             for (RecipeMap<?> map : maps) {
                 if (!canMake(map, contents)) continue;
-                int fit = fit(map, contents, held);
+                int fit = fitAny(map, contents, held);
                 if (fit == FIT_OK) {
                     s.flags = (s.flags & ~Net.Entry.MOLD_MISMATCH) | Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
                     break;
@@ -1096,6 +1096,11 @@ public final class Candidates {
         final List<ItemStack> all = new ArrayList<>();
         /** Configuration items among them: circuits, molds, lenses. */
         final List<ItemStack> config = new ArrayList<>();
+        /**
+         * Multiblock with input separation fed only through fluid hatches: items may land in any of its buses, so
+         * each bus is a separate possibility (GT runs each bus with all fluids). Null otherwise.
+         */
+        List<Held> perBus;
     }
 
     private static Held machineHeld(IInterfaceViewable view, Collection<RecipeMap<?>> maps) {
@@ -1114,11 +1119,14 @@ public final class Candidates {
         }
         if (view instanceof IInterfaceHost) {
             Set<Object> addedBuses = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            boolean touchesItemInput = false;
+            List<MTEMultiBlockBase> separated = new ArrayList<>();
             for (TileEntity n : neighbours(self, ((IInterfaceHost) view).getTargets())) {
                 if (!(n instanceof IGregTechTileEntity)) continue;
                 IMetaTileEntity mte = ((IGregTechTileEntity) n).getMetaTileEntity();
-                if ((mte instanceof MTEBasicMachine || mte instanceof MTEHatchInputBus) && addedBuses.add(mte)) {
-                    addInventory(held, mte, maps);
+                if (mte instanceof MTEBasicMachine || mte instanceof MTEHatchInputBus) {
+                    touchesItemInput = true;
+                    if (addedBuses.add(mte)) addInventory(held, mte, maps);
                 }
                 // Multiblock without input separation: GT combines all its input buses (circuit, mold, lens may be
                 // in another one than the hatch the interface touches, e.g. an interface on a fluid input hatch).
@@ -1137,7 +1145,11 @@ public final class Candidates {
                         held.all.add(ctrlCircuit);
                         held.config.add(ctrlCircuit);
                     }
-                    if (multi.isInputSeparationEnabled() || multi.mInputBusses == null) continue;
+                    if (multi.mInputBusses == null) continue;
+                    if (multi.isInputSeparationEnabled()) {
+                        if (!separated.contains(multi)) separated.add(multi);
+                        continue;
+                    }
                     for (MTEHatchInputBus bus : multi.mInputBusses) {
                         // Same rule as MTEMultiBlockBase.getStoredInputs(): a CRIB is listed among the buses but its
                         // contents (patterns, manual slots) are never combined with them.
@@ -1150,8 +1162,40 @@ public final class Candidates {
                     }
                 }
             }
+            // Only fluid hatches touched, input separation on: the items reach some bus by other means (chest,
+            // conduit). Try each bus; the caption and NEI fallback see all of them.
+            if (!touchesItemInput && !separated.isEmpty()) {
+                List<Held> variants = new ArrayList<>();
+                List<ItemStack> baseAll = new ArrayList<>(held.all), baseConfig = new ArrayList<>(held.config);
+                for (MTEMultiBlockBase multi : separated) {
+                    for (MTEHatchInputBus bus : multi.mInputBusses) {
+                        if (bus == null || bus instanceof MTEHatchCraftingInputME
+                            || bus.getBaseMetaTileEntity() == null
+                            || !addedBuses.add(bus)) continue;
+                        Held v = new Held();
+                        v.all.addAll(baseAll);
+                        v.config.addAll(baseConfig);
+                        addInventory(v, bus, maps);
+                        variants.add(v);
+                        addInventory(held, bus, maps);
+                    }
+                }
+                if (!variants.isEmpty()) held.perBus = variants;
+            }
         }
         return held;
+    }
+
+    /** fit() for the machine; with per-bus possibilities the best one counts (OK, then EXTRA, then NONE). */
+    private static int fitAny(RecipeMap<?> map, PatternContents contents, Held held) {
+        if (held.perBus == null) return fit(map, contents, held);
+        int best = FIT_NONE;
+        for (Held v : held.perBus) {
+            int f = fit(map, contents, v);
+            if (f == FIT_OK) return FIT_OK;
+            if (f == FIT_EXTRA) best = FIT_EXTRA;
+        }
+        return best;
     }
 
     /** Adds a GT machine's or bus's slots; the circuit slot and recipe non-consumables count as configuration. */
