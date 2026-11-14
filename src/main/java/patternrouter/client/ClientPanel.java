@@ -147,15 +147,15 @@ public class ClientPanel {
             ConflictRow c = new ConflictRow(BASE_ID + 20 + i, i);
             confRows.add(c);
             e.buttonList.add(c);
-            GuiButton x = new GuiButton(BASE_ID + 40 + i, 0, 0, 52, 16, I18n.format("patternrouter.button.extract"));
+            GuiButton x = new PanelButton(BASE_ID + 40 + i, 52, 16, I18n.format("patternrouter.button.extract"));
             extractButtons.add(x);
             e.buttonList.add(x);
         }
-        up = new GuiButton(BASE_ID + 100, 0, 0, 20, 16, "▲");
-        down = new GuiButton(BASE_ID + 101, 0, 0, 20, 16, "▼");
+        up = new PanelButton(BASE_ID + 100, 20, 16, "▲");
+        down = new PanelButton(BASE_ID + 101, 20, 16, "▼");
         e.buttonList.add(up);
         e.buttonList.add(down);
-        side = new GuiButton(BASE_ID + 102, 0, 0, 14, 14, "");
+        side = new PanelButton(BASE_ID + 102, 14, 14, "");
         e.buttonList.add(side);
         relayout();
     }
@@ -393,22 +393,35 @@ public class ClientPanel {
         onRight = useRight;
     }
 
+    /** Full conflict title, or the short one when it doesn't fit (English is longer). */
+    private String conflictTitle(FontRenderer fr, int w) {
+        String full = I18n.format("patternrouter.conflict.title", conflicts.size());
+        if (fr.getStringWidth(full) <= w) return full;
+        return fr.trimStringToWidth(I18n.format("patternrouter.conflict.title.short", conflicts.size()), w);
+    }
+
+    /** Machine rows and conflict rows that fit on screen this frame (see relayout). */
+    private int rowsCap = ROWS, confCap = CONF_ROWS;
+
+    private int listHeight(int cap) {
+        int shown = Math.min(entries.size(), cap);
+        return shown * ROW_H + (shown > 0 ? 4 : 0);
+    }
+
+    private int confHeight(int cap) {
+        int shown = Math.min(conflicts.size(), cap);
+        return shown == 0 ? 0 : 14 + shown * CONF_H + (conflicts.size() > cap ? 10 : 0) + 4;
+    }
+
     /** Vertical layout by content: list, note, conflicts, status line. */
     private void relayout() {
         int top = field("guiTop", "field_147009_r");
-        int shown = Math.min(entries.size(), ROWS);
-        int maxScroll = Math.max(0, entries.size() - ROWS);
-        scroll = Math.max(0, Math.min(scroll, maxScroll));
-
         FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
         String n = noteText();
         int noteLines = n.isEmpty() ? 0
             : fr.listFormattedStringToWidth(n, pw - 16)
                 .size();
-        int confShown = Math.min(conflicts.size(), CONF_ROWS);
-        int confBlock = confShown == 0 ? 0 : 14 + confShown * CONF_H + (conflicts.size() > CONF_ROWS ? 10 : 0) + 4;
-
-        int body = shown * ROW_H + (shown > 0 ? 4 : 0) + (noteLines > 0 ? noteLines * 10 + 4 : 0) + confBlock;
+        int noteBlock = noteLines > 0 ? noteLines * 10 + 4 : 0;
         // The footer grows for a long status line (wrapped, not cut).
         footer = FOOTER;
         if (System.currentTimeMillis() < statusUntil && !status.isEmpty()) {
@@ -416,6 +429,19 @@ public class ClientPanel {
                 .size();
             footer = Math.max(FOOTER, lines * 10 + 10);
         }
+        // Fit the screen height: fewer conflict rows first ("…and N more"), then fewer machine rows (scrollable).
+        int avail = gui.height - 4 - HEADER - footer - noteBlock;
+        rowsCap = ROWS;
+        confCap = CONF_ROWS;
+        while (listHeight(rowsCap) + confHeight(confCap) > avail && confCap > 1) confCap--;
+        while (listHeight(rowsCap) + confHeight(confCap) > avail && rowsCap > 1) rowsCap--;
+        int shown = Math.min(entries.size(), rowsCap);
+        int maxScroll = Math.max(0, entries.size() - rowsCap);
+        scroll = Math.max(0, Math.min(scroll, maxScroll));
+        int confShown = Math.min(conflicts.size(), confCap);
+        int confBlock = confHeight(confCap);
+
+        int body = shown * ROW_H + (shown > 0 ? 4 : 0) + noteBlock + confBlock;
         ph = HEADER + Math.max(body, 12) + footer;
         if (Config.panelCustom) {
             py = clamp(top + Config.panelY, 2, gui.height - ph - 2);
@@ -438,7 +464,7 @@ public class ClientPanel {
             b.yPosition = listY + b.slot * ROW_H;
             b.width = pw - 10;
             b.height = ROW_H - 1;
-            b.visible = visible && scroll + b.slot < entries.size();
+            b.visible = visible && b.slot < rowsCap && scroll + b.slot < entries.size();
         }
         for (int i = 0; i < CONF_ROWS; i++) {
             ConflictRow c = confRows.get(i);
@@ -456,7 +482,7 @@ public class ClientPanel {
         up.xPosition = px + pw - 48;
         down.xPosition = px + pw - 26;
         up.yPosition = down.yPosition = py + ph - footer + 3;
-        up.visible = down.visible = visible && entries.size() > ROWS;
+        up.visible = down.visible = visible && entries.size() > rowsCap;
         up.enabled = scroll > 0;
         down.enabled = scroll < maxScroll;
         side.xPosition = px + pw - 5 - side.width;
@@ -731,6 +757,41 @@ public class ClientPanel {
         Gui.drawRect(x + w - 2, y + 2, x + w - 1, y + h - 1, lo);
     }
 
+    /**
+     * Button in the panel's own style. Vanilla buttons draw a 20 px tall texture and lose their bottom edge when
+     * shorter; this one draws a full bevel at any size, lighter on hover, flat and dim when disabled, pressed look
+     * while the mouse is held on it.
+     */
+    private static final class PanelButton extends GuiButton {
+
+        PanelButton(int id, int w, int h, String text) {
+            super(id, 0, 0, w, h, text);
+        }
+
+        @Override
+        public void drawButton(Minecraft mc, int mx, int my) {
+            if (!visible) return;
+            boolean hover = mx >= xPosition && my >= yPosition && mx < xPosition + width && my < yPosition + height;
+            field_146123_n = hover;
+            boolean pressed = hover && enabled && Mouse.isButtonDown(0);
+            int fill = !enabled ? 0xFFA8A8A8 : hover ? 0xFFDCDCF0 : 0xFFC6C6C6;
+            if (enabled) drawRaised(xPosition, yPosition, width, height, fill, pressed);
+            else {
+                Gui.drawRect(xPosition, yPosition, xPosition + width, yPosition + height, 0xFF6E6E6E);
+                Gui.drawRect(xPosition + 1, yPosition + 1, xPosition + width - 1, yPosition + height - 1, fill);
+            }
+            FontRenderer fr = mc.fontRenderer;
+            String s = fr.trimStringToWidth(displayString, width - 4);
+            int color = !enabled ? 0x7A7A7A : hover ? 0x1E1E8C : GUI_TEXT;
+            int off = pressed ? 1 : 0;
+            fr.drawString(
+                s,
+                xPosition + (width - fr.getStringWidth(s)) / 2 + off,
+                yPosition + (height - 8) / 2 + off,
+                color);
+        }
+    }
+
     /** Soft drop shadow so the panel floats above the screen. */
     private static void drawShadow(int x, int y, int w, int h) {
         Gui.drawRect(x + 4, y + h, x + w + 2, y + h + 3, 0x50000000);
@@ -792,8 +853,8 @@ public class ClientPanel {
                 drawItem(mc, currentPattern, xPosition + 6, yPosition + 3);
                 tx = xPosition + 27;
             }
-            String page = entries.size() > ROWS
-                ? (scroll + 1) + "-" + Math.min(scroll + ROWS, entries.size()) + "/" + entries.size()
+            String page = entries.size() > rowsCap
+                ? (scroll + 1) + "-" + Math.min(scroll + rowsCap, entries.size()) + "/" + entries.size()
                 : "";
             int titleRoom = xPosition + width - 24 - (page.isEmpty() ? 0 : fr.getStringWidth(page) + 4) - tx;
             fr.drawString(
@@ -805,7 +866,7 @@ public class ClientPanel {
                 // Left of the side arrow in the title bar.
                 fr.drawString(page, xPosition + width - 24 - fr.getStringWidth(page), yPosition + 7, GUI_TEXT_DIM);
             }
-            int shown = Math.min(entries.size(), ROWS);
+            int shown = Math.min(entries.size(), rowsCap);
             if (shown > 0) drawInset(xPosition + 4, listY - 1, width - 8, shown * ROW_H + 1);
             String n = noteText();
             if (!n.isEmpty()) {
@@ -814,17 +875,13 @@ public class ClientPanel {
                     fr.drawString(wrapped.get(i), xPosition + 8, noteY + i * 10, GUI_TEXT_DIM);
                 }
             }
-            int confShown = Math.min(conflicts.size(), CONF_ROWS);
+            int confShown = Math.min(conflicts.size(), confCap);
             if (confShown > 0) {
-                fr.drawString(
-                    fr.trimStringToWidth(I18n.format("patternrouter.conflict.title", conflicts.size()), width - 16),
-                    xPosition + 8,
-                    confY + 3,
-                    GUI_TEXT_BAD);
+                fr.drawString(conflictTitle(fr, width - 16), xPosition + 8, confY + 3, GUI_TEXT_BAD);
                 drawInset(xPosition + 4, confY + 13, width - 8, confShown * CONF_H + 1);
-                if (conflicts.size() > CONF_ROWS) {
+                if (conflicts.size() > confCap) {
                     fr.drawString(
-                        I18n.format("patternrouter.conflict.more", conflicts.size() - CONF_ROWS),
+                        I18n.format("patternrouter.conflict.more", conflicts.size() - confCap),
                         xPosition + 8,
                         confY + 15 + confShown * CONF_H,
                         GUI_TEXT_DIM);
