@@ -29,12 +29,15 @@ public final class NeiCompat {
     }
 
     /**
-     * NEI asks where the panel is only when it lays itself out, then keeps the result: without this it stays squeezed
-     * after the panel disappears.
+     * NEI recomputes hidden slots on its own schedule (grid rendering cache); this marks the item and bookmark grids
+     * changed so the next frame recomputes them whatever the cache mode.
      */
-    public static void relayout(GuiContainer gui) {
+    public static void refreshMask() {
         try {
-            codechicken.nei.LayoutManager.layout(gui);
+            ItemPanels.itemPanel.getGrid()
+                .onItemsChanged();
+            ItemPanels.bookmarkPanel.getGrid()
+                .onItemsChanged();
         } catch (Throwable ignored) {}
     }
 

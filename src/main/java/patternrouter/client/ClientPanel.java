@@ -463,15 +463,31 @@ public class ClientPanel {
         side.yPosition = py + 4;
         side.displayString = onRight ? "◀" : "▶";
         side.visible = visible;
-        // Let NEI re-lay itself out when the panel appears, disappears, moves or resizes (not while dragging).
+        // NEI hides its item slots under every button of the GUI and ignores GuiButton.visible: park the hidden
+        // ones off screen, or NEI keeps a hole where the panel was.
+        park(bg);
+        for (GuiButton b : rows) park(b);
+        for (GuiButton b : confRows) park(b);
+        for (GuiButton b : extractButtons) park(b);
+        park(up);
+        park(down);
+        park(side);
+        // Refresh NEI's slot mask right away when the panel appears, disappears, moves or resizes.
         long key = visible ? (((long) px & 0xFFFF) << 48) | (((long) py & 0xFFFF) << 32) | ((long) pw << 16) | ph : -1;
         if (NEI && key != neiLayoutKey && !dragging) {
             neiLayoutKey = key;
-            NeiCompat.relayout(gui);
+            NeiCompat.refreshMask();
         }
     }
 
-    /** Panel area NEI last laid itself out around (-1: no panel). */
+    private static void park(GuiButton b) {
+        if (b != null && !b.visible) {
+            b.xPosition = -10000;
+            b.yPosition = -10000;
+        }
+    }
+
+    /** Panel area NEI's mask was last refreshed for (-1: no panel). */
     private long neiLayoutKey = Long.MIN_VALUE;
 
     private static int clamp(int v, int min, int max) {
