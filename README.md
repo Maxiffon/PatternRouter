@@ -27,8 +27,12 @@ GTNH 2.9.0-RC-2; tested in single player and on the official 2.9.0-RC-2 dedicate
 Install: put `patternrouter-<version>.jar` (not `-dev` / `-sources`) into `mods`. If only one side has the mod, players
 can still connect; the panel just finds nothing.
 
-## Config
-`config/patternrouter.cfg`: `panelSide = right | left`.
+## Panel position
+- Drag the panel by its title to put it anywhere; the position is kept relative to the terminal.
+- The arrow in the title snaps it back to the automatic place on the left or right.
+- NEI hides its items under the panel; automatic placement stays below NEI's page bar.
+
+Saved in `config/patternrouter.cfg` (`panelSide`, `panelCustom`, `panelX`, `panelY`).
 
 ## Building
 ```
