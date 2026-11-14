@@ -531,6 +531,8 @@ public class ClientPanel {
     }
 
     private void resetList() {
+        // Ask again for the same pattern next time; otherwise a reopened terminal showed an empty panel.
+        lastKey = null;
         entries = Collections.emptyList();
         conflicts = Collections.emptyList();
         note = -1;
