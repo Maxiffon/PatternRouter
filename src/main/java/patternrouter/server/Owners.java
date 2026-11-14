@@ -19,8 +19,8 @@ import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
  * Which multiblock controller a GT hatch belongs to.
  * <p>
  * Newer GT stores it in {@code MTEHatch.ae2CraftingIconOwner} (read by reflection, no mixin, so older GT still
- * loads). Older GT (e.g. GTNH 2.9.0-RC-1) lacks the field: then the loaded multiblocks are scanned for the hatch in
- * their input lists, once per tick.
+ * loads). Older GT (e.g. GTNH 2.9.0-RC-1) lacks the field, and some multiblocks leave it empty: then the loaded
+ * multiblocks are scanned for the hatch in their input lists, once per tick.
  */
 final class Owners {
 
@@ -47,7 +47,10 @@ final class Owners {
         if (!(hatch instanceof MTEHatch)) return null;
         if (OWNER_FIELD != null) {
             try {
-                return (ChunkCoordinates) OWNER_FIELD.get(hatch);
+                ChunkCoordinates c = (ChunkCoordinates) OWNER_FIELD.get(hatch);
+                if (c != null) return c;
+                // Some multiblocks (GT++, e.g. Industrial Maceration Stack) set the crafting icon without the owner:
+                // fall through to the scan.
             } catch (Throwable ignored) {}
         }
         return world == null ? null : scan(world).get(hatch);
