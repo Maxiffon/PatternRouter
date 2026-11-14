@@ -149,7 +149,7 @@ public final class Candidates {
         } else {
             long started = System.nanoTime();
             category = checkedCategory(category, nonConsumables, pattern, player.worldObj);
-            List<Scored> scored = score(grid, player.worldObj, category, nonConsumables, pattern);
+            List<Scored> scored = score(grid, player, player.worldObj, category, nonConsumables, pattern);
             // Providers this player chose before for this kind of pattern: offered first, even if no machine is seen.
             String key = choiceKey(category, nonConsumables, storedOutput(pattern, player.worldObj));
             Choices choices = key.isEmpty() ? null : Choices.get();
@@ -279,8 +279,8 @@ public final class Candidates {
         }
     }
 
-    private static List<Scored> score(IGrid grid, World world, String category, List<ItemStack> nonConsumables,
-        ItemStack pattern) {
+    private static List<Scored> score(IGrid grid, EntityPlayerMP player, World world, String category,
+        List<ItemStack> nonConsumables, ItemStack pattern) {
         RecipeMap<?> wanted = recipeMapOf(category);
         ItemStack output = storedOutput(pattern, world);
         // Pattern inputs/output for the GT recipe lookup (with or without the NEI category).
@@ -288,23 +288,26 @@ public final class Candidates {
         List<Scored> out = new ArrayList<>();
         CAN_MAKE.clear();
         Set<IInterfaceViewable> seen = new HashSet<>();
-        for (Class<? extends IInterfaceViewable> cls : AEApi.instance()
+        // The terminal's network plus networks linked by Pattern Repeaters where the player may build.
+        List<IGrid> grids = new ArrayList<>();
+        for (IGrid g : linkedGrids(grid)) if (g == grid || canBuild(g, player)) grids.add(g);
+        for (IGrid g : grids) for (Class<? extends IInterfaceViewable> cls : AEApi.instance()
             .registries()
             .interfaceTerminal()
             .getSupportedClasses()) {
-            for (IGridNode node : grid.getMachines(cls)) {
-                if (!(node.getMachine() instanceof IInterfaceViewable)) continue;
-                IInterfaceViewable view = (IInterfaceViewable) node.getMachine();
-                if (!seen.add(view) || !view.shouldDisplay() || !node.isActive()) continue;
-                IInventory inv = view.getPatterns();
-                if (inv == null) continue;
-                try {
-                    out.add(scoreOne(view, inv, wanted, nonConsumables, pattern, output, contents));
-                } catch (Throwable t) {
-                    PatternRouter.LOG.debug("Skipping provider {}: {}", view.getName(), t.toString());
+                for (IGridNode node : g.getMachines(cls)) {
+                    if (!(node.getMachine() instanceof IInterfaceViewable)) continue;
+                    IInterfaceViewable view = (IInterfaceViewable) node.getMachine();
+                    if (!seen.add(view) || !view.shouldDisplay() || !node.isActive()) continue;
+                    IInventory inv = view.getPatterns();
+                    if (inv == null) continue;
+                    try {
+                        out.add(scoreOne(view, inv, wanted, nonConsumables, pattern, output, contents));
+                    } catch (Throwable t) {
+                        PatternRouter.LOG.debug("Skipping provider {}: {}", view.getName(), t.toString());
+                    }
                 }
             }
-        }
         return out;
     }
 
@@ -563,7 +566,7 @@ public final class Candidates {
             Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
             return;
         }
-        if (!canBuild(grid, player)) {
+        if (!canBuild(grid, player) || !canBuildAt(view, player)) {
             Net.CH.sendTo(new Net.Result(Net.Result.DENIED, rawName(view)), player);
             return;
         }
@@ -609,7 +612,7 @@ public final class Candidates {
             Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
             return;
         }
-        if (!canBuild(grid, player)) {
+        if (!canBuild(grid, player) || !canBuildAt(view, player)) {
             Net.CH.sendTo(new Net.Result(Net.Result.DENIED, rawName(view)), player);
             return;
         }
@@ -817,9 +820,26 @@ public final class Candidates {
         return node == null ? null : node.getGrid();
     }
 
+    /** Repeaters.reachable(), or just the grid on AE2 builds without Pattern Repeater (class missing). */
+    private static List<IGrid> linkedGrids(IGrid grid) {
+        try {
+            return Repeaters.reachable(grid);
+        } catch (Throwable t) {
+            return Collections.singletonList(grid);
+        }
+    }
+
+    /** The provider is in the terminal's network or one linked to it by Pattern Repeaters. */
     private static boolean sameGrid(IInterfaceViewable view, IGrid grid) {
         IGridNode node = view.getGridNode(ForgeDirection.UNKNOWN);
-        return node != null && node.getGrid() == grid;
+        if (node == null || node.getGrid() == null) return false;
+        return node.getGrid() == grid || linkedGrids(grid).contains(node.getGrid());
+    }
+
+    /** Build permission in the provider's own network (it may be behind a Pattern Repeater). */
+    private static boolean canBuildAt(IInterfaceViewable view, EntityPlayerMP player) {
+        IGridNode node = view.getGridNode(ForgeDirection.UNKNOWN);
+        return node != null && node.getGrid() != null && canBuild(node.getGrid(), player);
     }
 
     private static boolean canBuild(IGrid grid, EntityPlayerMP player) {
