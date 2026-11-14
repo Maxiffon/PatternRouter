@@ -10,7 +10,7 @@ import com.gtnewhorizon.gtnhmixins.LateMixin;
 import cpw.mods.fml.relauncher.FMLLaunchHandler;
 import cpw.mods.fml.relauncher.Side;
 
-/** Mixins into GT and NEI. Late, because both are regular mods, not coremods. */
+/** Mixin into NEI (late, NEI is a regular mod). Optional: if it fails, the panel still works without NEI context. */
 @LateMixin
 public class LateMixinLoader implements ILateMixinLoader {
 
@@ -22,10 +22,6 @@ public class LateMixinLoader implements ILateMixinLoader {
     @Override
     public List<String> getMixins(Set<String> loadedMods) {
         List<String> mixins = new ArrayList<>();
-        if (loadedMods.contains("gregtech")) {
-            // Controller coordinates stored in the hatch (needed for CRIB).
-            mixins.add("gt.MTEHatchAccessor");
-        }
         if (FMLLaunchHandler.side() == Side.CLIENT && loadedMods.contains("NotEnoughItems")) {
             // Remember the NEI recipe transferred into the pattern terminal.
             mixins.add("nei.RecipeHandlerRefMixin");

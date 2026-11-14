@@ -57,7 +57,6 @@ import gregtech.api.util.GTRecipe;
 import gregtech.common.tileentities.machines.MTEHatchCraftingInputME;
 import patternrouter.Net;
 import patternrouter.PatternRouter;
-import patternrouter.mixins.late.gt.MTEHatchAccessor;
 
 /**
  * Server side: finds interfaces and CRIBs in the pattern terminal's ME network that fit the recipe and puts
@@ -271,13 +270,13 @@ public final class Candidates {
         List<ItemStack> nonConsumables, ItemStack pattern, ItemStack output, PatternContents contents) {
         Scored s = new Scored();
         s.view = view;
-        s.icon = view.getDisplayRep() != null ? view.getDisplayRep() : view.getSelfRep();
-        s.name = view.getRawName() == null ? "" : view.getRawName();
-        IChatComponent suffix = view.getNameSuffix();
+        s.icon = icon(view);
+        s.name = rawName(view);
+        IChatComponent suffix = nameSuffix(view);
         // Sent as JSON so the client translates it in the player's language.
         s.suffix = suffix == null ? "" : IChatComponent.Serializer.func_150696_a(suffix);
 
-        int slots = Math.min(inv.getSizeInventory(), view.numSlots());
+        int slots = Math.min(inv.getSizeInventory(), numSlots(view));
         for (int i = 0; i < slots; i++) {
             ItemStack in = inv.getStackInSlot(i);
             if (in == null) {
@@ -453,14 +452,14 @@ public final class Candidates {
             return;
         }
         if (!canBuild(grid, player)) {
-            Net.CH.sendTo(new Net.Result(Net.Result.DENIED, view.getRawName()), player);
+            Net.CH.sendTo(new Net.Result(Net.Result.DENIED, rawName(view)), player);
             return;
         }
         IInventory inv = view.getPatterns();
         ItemStack now = c.slot < inv.getSizeInventory() ? inv.getStackInSlot(c.slot) : null;
         // The slot must still hold exactly the pattern we listed; otherwise someone changed it.
         if (now == null || !ItemStack.areItemStacksEqual(now, c.pattern)) {
-            Net.CH.sendTo(new Net.Result(Net.Result.GONE, view.getRawName()), player);
+            Net.CH.sendTo(new Net.Result(Net.Result.GONE, rawName(view)), player);
             return;
         }
         ItemStack taken = now.copy();
@@ -469,12 +468,12 @@ public final class Candidates {
         if (!player.inventory.addItemStackToInventory(taken)) {
             inv.setInventorySlotContents(c.slot, now); // inventory full: put it back
             inv.markDirty();
-            Net.CH.sendTo(new Net.Result(Net.Result.INV_FULL, view.getRawName()), player);
+            Net.CH.sendTo(new Net.Result(Net.Result.INV_FULL, rawName(view)), player);
             return;
         }
         player.inventoryContainer.detectAndSendChanges();
         open.detectAndSendChanges();
-        Net.CH.sendTo(new Net.Result(Net.Result.EXTRACTED, view.getRawName()), player);
+        Net.CH.sendTo(new Net.Result(Net.Result.EXTRACTED, rawName(view)), player);
     }
 
     // ------------------------------------------------------------------ upload
@@ -499,18 +498,18 @@ public final class Candidates {
             return;
         }
         if (!canBuild(grid, player)) {
-            Net.CH.sendTo(new Net.Result(Net.Result.DENIED, view.getRawName()), player);
+            Net.CH.sendTo(new Net.Result(Net.Result.DENIED, rawName(view)), player);
             return;
         }
         IInventory patternInv = term.getPatternTerminal()
             .getInventoryByName(StorageName.CRAFTING_PATTERN.getName());
         ItemStack pattern = patternInv == null ? null : patternInv.getStackInSlot(1);
         if (pattern == null || !(pattern.getItem() instanceof ItemEncodedPattern)) {
-            Net.CH.sendTo(new Net.Result(Net.Result.NO_PATTERN, view.getRawName()), player);
+            Net.CH.sendTo(new Net.Result(Net.Result.NO_PATTERN, rawName(view)), player);
             return;
         }
         IInventory target = view.getPatterns();
-        int slots = Math.min(target.getSizeInventory(), view.numSlots());
+        int slots = Math.min(target.getSizeInventory(), numSlots(view));
         for (int i = 0; i < slots; i++) {
             if (target.getStackInSlot(i) == null && target.isItemValidForSlot(i, pattern)) {
                 ItemStack one = pattern.copy();
@@ -520,13 +519,12 @@ public final class Candidates {
                 pattern.stackSize--;
                 patternInv.setInventorySlotContents(1, pattern.stackSize > 0 ? pattern : null);
                 term.detectAndSendChanges();
-                Net.CH.sendTo(new Net.Result(Net.Result.OK, view.getRawName()), player);
-                PatternRouter.LOG
-                    .debug("{} uploaded a pattern to {}", player.getCommandSenderName(), view.getRawName());
+                Net.CH.sendTo(new Net.Result(Net.Result.OK, rawName(view)), player);
+                PatternRouter.LOG.debug("{} uploaded a pattern to {}", player.getCommandSenderName(), rawName(view));
                 return;
             }
         }
-        Net.CH.sendTo(new Net.Result(Net.Result.FULL, view.getRawName()), player);
+        Net.CH.sendTo(new Net.Result(Net.Result.FULL, rawName(view)), player);
     }
 
     // ------------------------------------------------------------------ helpers
@@ -599,6 +597,44 @@ public final class Candidates {
         return maps;
     }
 
+    // ------------------------------------------------------------------ AE2 compatibility
+    // Default methods of IInterfaceViewable added in newer AE2 GTNH builds; older ones (GTNH 2.9.0-RC-1) lack some.
+
+    private static String rawName(IInterfaceViewable view) {
+        String n;
+        try {
+            n = view.getRawName();
+        } catch (Throwable t) {
+            n = view.getName();
+        }
+        return n == null ? "" : n;
+    }
+
+    private static IChatComponent nameSuffix(IInterfaceViewable view) {
+        try {
+            return view.getNameSuffix();
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static ItemStack icon(IInterfaceViewable view) {
+        try {
+            ItemStack d = view.getDisplayRep();
+            return d != null ? d : view.getSelfRep();
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static int numSlots(IInterfaceViewable view) {
+        try {
+            return view.numSlots();
+        } catch (Throwable t) {
+            return view.rows() * view.rowSize();
+        }
+    }
+
     private static boolean craftingProvider(IInterfaceViewable view) {
         try {
             return view.isCraftingPatternProvider();
@@ -616,7 +652,7 @@ public final class Candidates {
         for (TileEntity te : tes) {
             if (!(te instanceof IGregTechTileEntity)) continue;
             IMetaTileEntity mte = ((IGregTechTileEntity) te).getMetaTileEntity();
-            if (mte instanceof MTEHatchInputBus && ((MTEHatchAccessor) mte).patternrouter$getOwner() == null) {
+            if (mte instanceof MTEHatchInputBus && Owners.ownerOf(mte, te.getWorldObj()) == null) {
                 return true;
             }
         }
@@ -655,7 +691,7 @@ public final class Candidates {
                 .append(mapNames(((RecipeMapWorkable) mte).getAvailableRecipeMaps()));
         }
         if (mte instanceof MTEHatch && depth == 0) {
-            ChunkCoordinates owner = ((MTEHatchAccessor) mte).patternrouter$getOwner();
+            ChunkCoordinates owner = Owners.ownerOf(mte, te.getWorldObj());
             b.append(" owner=")
                 .append(owner == null ? "null" : owner.posX + "," + owner.posY + "," + owner.posZ);
             World w = te.getWorldObj();
@@ -680,7 +716,7 @@ public final class Candidates {
             if (!c.isEmpty()) return c;
         }
         if (mte instanceof MTEHatch && depth == 0) {
-            ChunkCoordinates owner = ((MTEHatchAccessor) mte).patternrouter$getOwner();
+            ChunkCoordinates owner = Owners.ownerOf(mte, te.getWorldObj());
             World w = te.getWorldObj();
             if (owner != null && w != null && w.blockExists(owner.posX, owner.posY, owner.posZ)) {
                 return recipeMapsOf(w.getTileEntity(owner.posX, owner.posY, owner.posZ), 1);
@@ -722,7 +758,7 @@ public final class Candidates {
                 // Multiblock without input separation: GT combines all its input buses (molds, lenses may be in
                 // another one).
                 if (mte instanceof MTEHatchInputBus) {
-                    ChunkCoordinates owner = ((MTEHatchAccessor) mte).patternrouter$getOwner();
+                    ChunkCoordinates owner = Owners.ownerOf(mte, n.getWorldObj());
                     World w = n.getWorldObj();
                     if (owner == null || w == null || !w.blockExists(owner.posX, owner.posY, owner.posZ)) continue;
                     TileEntity c = w.getTileEntity(owner.posX, owner.posY, owner.posZ);
