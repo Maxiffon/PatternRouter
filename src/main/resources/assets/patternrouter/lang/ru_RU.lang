@@ -31,3 +31,5 @@ patternrouter.note.unformed=Машин с этим рецептом в сети 
 patternrouter.tip.side.left=Поставить панель слева (или перетащите за заголовок)
 patternrouter.tip.side.right=Поставить панель справа (или перетащите за заголовок)
 patternrouter.note.noassembler=Шаблон крафта, но молекулярных сборщиков в сети нет. Показаны все интерфейсы со свободным местом.
+patternrouter.tip.highlight=Shift+клик — подсветить в мире
+patternrouter.tip.highlight.conflict=Клик — подсветить, где лежит старый шаблон

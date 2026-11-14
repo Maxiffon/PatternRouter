@@ -24,7 +24,8 @@ public final class Net {
     private Net() {}
 
     public static void init() {
-        CH = NetworkRegistry.INSTANCE.newSimpleChannel("patrouter");
+        CH = NetworkRegistry.INSTANCE.newSimpleChannel("patrouter2"); // v2: entries carry positions; old
+                                                                      // clients/servers just don't talk
         CH.registerMessage(Request.Handler.class, Request.class, 0, Side.SERVER);
         CH.registerMessage(Upload.Handler.class, Upload.class, 1, Side.SERVER);
         CH.registerMessage(CandidateList.Handler.class, CandidateList.class, 2, Side.CLIENT);
@@ -163,6 +164,8 @@ public final class Net {
         public String suffix = "";
         public int free;
         public int flags;
+        /** Provider position, for highlighting it in the world. */
+        public int dim, x, y, z;
     }
 
     public static class CandidateList implements IMessage {
@@ -199,6 +202,10 @@ public final class Net {
                 e.suffix = ByteBufUtils.readUTF8String(buf);
                 e.free = buf.readUnsignedShort();
                 e.flags = buf.readUnsignedByte();
+                e.dim = buf.readInt();
+                e.x = buf.readInt();
+                e.y = buf.readInt();
+                e.z = buf.readInt();
                 list.add(e);
             }
         }
@@ -213,6 +220,10 @@ public final class Net {
                 ByteBufUtils.writeUTF8String(buf, e.suffix);
                 buf.writeShort(Math.min(e.free, 65535));
                 buf.writeByte(e.flags);
+                buf.writeInt(e.dim);
+                buf.writeInt(e.x);
+                buf.writeInt(e.y);
+                buf.writeInt(e.z);
             }
         }
 

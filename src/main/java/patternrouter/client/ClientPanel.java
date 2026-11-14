@@ -207,7 +207,16 @@ public class ClientPanel {
                 tip.add(displayName(en));
                 tip.add(flagsLine(en, true));
                 tip.add("§7" + I18n.format("patternrouter.tip.click"));
+                tip.add("§7" + I18n.format("patternrouter.tip.highlight"));
                 drawTooltip(tip, e.mouseX, e.mouseY);
+            }
+        }
+        for (ConflictRow c : confRows) {
+            if (c.visible && c.mousePressed(Minecraft.getMinecraft(), e.mouseX, e.mouseY)) {
+                drawTooltip(
+                    Collections.singletonList("§7" + I18n.format("patternrouter.tip.highlight.conflict")),
+                    e.mouseX,
+                    e.mouseY);
             }
         }
         for (int i = 0; i < extractButtons.size(); i++) {
@@ -247,6 +256,12 @@ public class ClientPanel {
             Config.setPanelSide(onRight ? "left" : "right");
             layoutHorizontal();
             relayout();
+        } else if (e.button instanceof ConflictRow) {
+            int i = ((ConflictRow) e.button).slot;
+            if (i < conflicts.size()) highlight(conflicts.get(i));
+        } else if (e.button instanceof RowButton && GuiScreen.isShiftKeyDown()) {
+            int index = scroll + ((RowButton) e.button).slot;
+            if (index < entries.size()) highlight(entries.get(index));
         } else if (e.button instanceof RowButton) {
             int index = scroll + ((RowButton) e.button).slot;
             if (index < entries.size()) {
@@ -261,6 +276,22 @@ public class ClientPanel {
                 Net.CH.sendToServer(new Net.ExtractOld(token, i));
                 setStatus(I18n.format("patternrouter.status.extracting"), GUI_TEXT_DIM, 3000);
             }
+        }
+    }
+
+    /** Highlight the provider in the world with AE2's own highlighter (as its interface terminal does). */
+    private void highlight(Net.Entry en) {
+        Minecraft mc = Minecraft.getMinecraft();
+        try {
+            appeng.client.render.highlighter.BlockPosHighlighter.highlightBlocks(
+                mc.thePlayer,
+                Collections.singletonList(new appeng.api.util.DimensionalCoord(en.x, en.y, en.z, en.dim)),
+                appeng.core.localization.PlayerMessages.InterfaceHighlighted.getUnlocalized(),
+                appeng.core.localization.PlayerMessages.InterfaceInOtherDim.getUnlocalized());
+            mc.thePlayer.closeScreen();
+        } catch (Throwable t) {
+            // Older AE2 without the highlighter: at least say where it is.
+            setStatus(displayName(en) + ": " + en.x + ", " + en.y + ", " + en.z, GUI_TEXT_DIM, 6000);
         }
     }
 
@@ -816,9 +847,18 @@ public class ClientPanel {
             }
         }
 
+        /** A click on the row (the Extract button is a separate button) highlights the old pattern's interface. */
         @Override
         public boolean mousePressed(Minecraft mc, int mx, int my) {
-            return false;
+            return visible && mx >= xPosition
+                && my >= yPosition
+                && mx < xPosition + width - 58
+                && my < yPosition + height;
+        }
+
+        @Override
+        public void func_146113_a(net.minecraft.client.audio.SoundHandler handler) {
+            // no click sound for a highlight
         }
     }
 }

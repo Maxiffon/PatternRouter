@@ -22,6 +22,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.util.IChatComponent;
 import net.minecraft.world.World;
@@ -46,6 +48,7 @@ import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.helpers.IInterfaceHost;
 import appeng.items.misc.ItemEncodedPattern;
+import gregtech.api.enums.ItemList;
 import gregtech.api.interfaces.IConfigurationCircuitSupport;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
@@ -234,6 +237,7 @@ public final class Candidates {
         String suffix;
         int free;
         int flags;
+        int dim, x, y, z;
         /** Feeds a GT hatch that no formed multiblock owns. */
         boolean unformed;
         /** Slots holding a pattern with the same output. */
@@ -246,6 +250,10 @@ public final class Candidates {
             e.suffix = suffix;
             e.free = free;
             e.flags = flags;
+            e.dim = dim;
+            e.x = x;
+            e.y = y;
+            e.z = z;
             return e;
         }
     }
@@ -283,6 +291,13 @@ public final class Candidates {
         List<ItemStack> nonConsumables, ItemStack pattern, ItemStack output, PatternContents contents) {
         Scored s = new Scored();
         s.view = view;
+        try {
+            appeng.api.util.DimensionalCoord loc = view.getLocation();
+            s.dim = loc.getDimension();
+            s.x = loc.x;
+            s.y = loc.y;
+            s.z = loc.z;
+        } catch (Throwable ignored) {}
         s.icon = icon(view);
         s.name = rawName(view);
         IChatComponent suffix = nameSuffix(view);
@@ -327,10 +342,12 @@ public final class Candidates {
             return s;
         }
         boolean known = !contents.isEmpty();
+        Held held = machineHeld(view, maps);
+        // AE2 captions only CRIBs; for other providers show what the machine is set up with ([5], mold, lens).
+        if (s.suffix.isEmpty() && !held.config.isEmpty()) s.suffix = configCaption(held.config);
         if (wanted != null) {
             if (!maps.contains(wanted)) return s;
             s.flags |= Net.Entry.RECIPE_MATCH;
-            Held held = machineHeld(view, maps);
             int fit = known ? fit(wanted, contents, held) : FIT_NONE;
             if (fit == FIT_OK) s.flags |= Net.Entry.MOLD_MATCH;
             else if (fit == FIT_EXTRA) s.flags |= Net.Entry.MOLD_MISMATCH;
@@ -346,7 +363,6 @@ public final class Candidates {
             }
         } else if (known) {
             // No category: the GT lookup alone decides which machine fits.
-            Held held = machineHeld(view, maps);
             for (RecipeMap<?> map : maps) {
                 if (!canMake(map, contents)) continue;
                 int fit = fit(map, contents, held);
@@ -358,6 +374,34 @@ public final class Candidates {
             }
         }
         return s;
+    }
+
+    /**
+     * Caption like AE2's CRIB one: "[5]" for a programmed circuit, item names for molds/lenses. Sent as JSON so the
+     * client translates names in the player's language.
+     */
+    private static String configCaption(List<ItemStack> config) {
+        IChatComponent c = new ChatComponentText("{");
+        boolean first = true;
+        Set<String> seen = new HashSet<>();
+        for (ItemStack st : config) {
+            String key = Item.getIdFromItem(st.getItem()) + ":" + st.getItemDamage();
+            if (!seen.add(key)) continue;
+            if (!first) c.appendText(", ");
+            first = false;
+            if (isCircuit(st)) c.appendText("[" + st.getItemDamage() + "]");
+            else c.appendSibling(new ChatComponentTranslation(st.getUnlocalizedName() + ".name"));
+        }
+        c.appendText("}");
+        return IChatComponent.Serializer.func_150696_a(c);
+    }
+
+    private static boolean isCircuit(ItemStack st) {
+        try {
+            return ItemList.Circuit_Integrated.getItem() == st.getItem();
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** Per request: does this recipe map have any recipe with the pattern's output (one scan per map). */
@@ -811,15 +855,16 @@ public final class Candidates {
             }
         }
         if (view instanceof IInterfaceHost) {
+            Set<Object> addedBuses = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
             for (TileEntity n : neighbours(self, ((IInterfaceHost) view).getTargets())) {
                 if (!(n instanceof IGregTechTileEntity)) continue;
                 IMetaTileEntity mte = ((IGregTechTileEntity) n).getMetaTileEntity();
-                if (mte instanceof MTEBasicMachine || mte instanceof MTEHatchInputBus) {
+                if ((mte instanceof MTEBasicMachine || mte instanceof MTEHatchInputBus) && addedBuses.add(mte)) {
                     addInventory(held, mte, maps);
                 }
-                // Multiblock without input separation: GT combines all its input buses (molds, lenses may be in
-                // another one).
-                if (mte instanceof MTEHatchInputBus) {
+                // Multiblock without input separation: GT combines all its input buses (circuit, mold, lens may be
+                // in another one than the hatch the interface touches, e.g. an interface on a fluid input hatch).
+                if (mte instanceof MTEHatch && !(mte instanceof MTEHatchCraftingInputME)) {
                     ChunkCoordinates owner = Owners.ownerOf(mte, n.getWorldObj());
                     World w = n.getWorldObj();
                     if (owner == null || w == null || !w.blockExists(owner.posX, owner.posY, owner.posZ)) continue;
@@ -834,7 +879,8 @@ public final class Candidates {
                         // contents (patterns, manual slots) are never combined with them.
                         if (bus != null && bus != mte
                             && !(bus instanceof MTEHatchCraftingInputME)
-                            && bus.getBaseMetaTileEntity() != null) {
+                            && bus.getBaseMetaTileEntity() != null
+                            && addedBuses.add(bus)) {
                             addInventory(held, bus, maps);
                         }
                     }
