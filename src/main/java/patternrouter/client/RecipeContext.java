@@ -18,6 +18,8 @@ public final class RecipeContext {
     public static String category = "";
     public static List<ItemStack> nonConsumables = Collections.emptyList();
     public static ItemStack result;
+    /** Every output of the recipe: GT handlers have no main result, all outputs are "other stacks". */
+    public static List<ItemStack> outputs = Collections.emptyList();
     /** NEI tab title in the player's language, e.g. "Fluid Solidifier". */
     public static String machineName = "";
     public static long time;
@@ -40,6 +42,14 @@ public final class RecipeContext {
                 }
             }
             PositionedStack r = handler.getResultStack(recipeIndex);
+            List<ItemStack> outs = new ArrayList<>();
+            if (r != null && r.item != null) outs.add(r.item.copy());
+            try {
+                List<PositionedStack> other = handler.getOtherStacks(recipeIndex);
+                if (other != null) for (PositionedStack ps : other) {
+                    if (ps != null && ps.item != null) outs.add(ps.item.copy());
+                }
+            } catch (Throwable ignored) {}
             category = id == null ? "" : id;
             String title;
             try {
@@ -51,11 +61,13 @@ public final class RecipeContext {
                 : net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(title);
             nonConsumables = nc;
             result = r == null || r.item == null ? null : r.item.copy();
+            outputs = outs;
             time = System.currentTimeMillis();
         } catch (Throwable t) {
             category = "";
             nonConsumables = Collections.emptyList();
             result = null;
+            outputs = Collections.emptyList();
         }
     }
 
@@ -64,6 +76,7 @@ public final class RecipeContext {
         category = "";
         nonConsumables = Collections.emptyList();
         result = null;
+        outputs = Collections.emptyList();
         machineName = "";
         time = 0;
     }
@@ -74,8 +87,14 @@ public final class RecipeContext {
      */
     public static boolean appliesTo(ItemStack patternOutput) {
         if (time == 0 || System.currentTimeMillis() - time > TTL_MS) return false;
-        if (result == null || patternOutput == null) return false;
-        return result.getItem() == patternOutput.getItem()
-            && (result.getItemDamage() == patternOutput.getItemDamage() || result.getItemDamage() == 32767);
+        if (patternOutput == null) return false;
+        // The pattern's output must be the recipe's main result, or (GT recipes have none) one of its outputs.
+        if (result != null) return same(result, patternOutput);
+        for (ItemStack o : outputs) if (same(o, patternOutput)) return true;
+        return false;
+    }
+
+    private static boolean same(ItemStack a, ItemStack b) {
+        return a.getItem() == b.getItem() && (a.getItemDamage() == b.getItemDamage() || a.getItemDamage() == 32767);
     }
 }

@@ -215,10 +215,11 @@ public final class Candidates {
             category = checkedCategory(category, nonConsumables, pattern, player.worldObj);
             List<Scored> scored = score(grid, player, player.worldObj, category, nonConsumables, pattern);
             // Machine not seen (chest, conduit in between) but the interface is named after it: weak match.
+            // Only when the machine is unknown: "Precise Assembler" must not pull in interfaces of plain assemblers.
             if (recipeMapOf(category) != null) {
                 List<String> words = nameWords(machineName);
                 for (Scored s : scored) {
-                    if ((s.flags & Net.Entry.RECIPE_MATCH) == 0 && nameMatches(s.name, words)) {
+                    if ((s.flags & Net.Entry.RECIPE_MATCH) == 0 && !s.machineSeen && nameMatches(s.name, words)) {
                         s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.BY_NAME;
                     }
                 }
@@ -378,6 +379,8 @@ public final class Candidates {
         final List<ItemStack> config = new ArrayList<>();
         /** Feeds a GT hatch that no formed multiblock owns. */
         boolean unformed;
+        /** The machine behind this provider is known (its recipe maps were found). */
+        boolean machineSeen;
         /** Slots holding a pattern with the same output. */
         final List<Integer> sameSlots = new ArrayList<>();
 
@@ -491,6 +494,7 @@ public final class Candidates {
             s.unformed = hasUnownedHatch(view);
             return s;
         }
+        s.machineSeen = true;
         boolean known = !contents.isEmpty();
         Held held = machineHeld(view, maps);
         if (PatternRouter.LOG.isDebugEnabled()) {
