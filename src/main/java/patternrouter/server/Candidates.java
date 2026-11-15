@@ -432,6 +432,7 @@ public final class Candidates {
         PatternContents contents = PatternContents.of(pattern, world);
         List<Scored> out = new ArrayList<>();
         CAN_MAKE.clear();
+        SUBNETS.clear();
         Set<IInterfaceViewable> seen = new HashSet<>();
         // The terminal's network plus networks linked by Pattern Repeaters where the player may build.
         List<IGrid> grids = new ArrayList<>();
@@ -1139,8 +1140,7 @@ public final class Candidates {
         maps.addAll(recipeMapsOf(self, 0));
         // AE2 ME interface: the machine is the neighbour it outputs into.
         if (view instanceof IInterfaceHost) {
-            IInterfaceHost host = (IInterfaceHost) view;
-            for (TileEntity n : neighbours(self, host.getTargets())) maps.addAll(recipeMapsOf(n, 0));
+            for (TileEntity n : targets(view)) maps.addAll(recipeMapsOf(n, 0));
         }
         return maps;
     }
@@ -1196,7 +1196,7 @@ public final class Candidates {
         TileEntity self = view.getTileEntity();
         List<TileEntity> tes = new ArrayList<>();
         tes.add(self);
-        if (view instanceof IInterfaceHost) tes.addAll(neighbours(self, ((IInterfaceHost) view).getTargets()));
+        if (view instanceof IInterfaceHost) tes.addAll(targets(view));
         for (TileEntity te : tes) {
             if (!(te instanceof IGregTechTileEntity)) continue;
             IMetaTileEntity mte = ((IGregTechTileEntity) te).getMetaTileEntity();
@@ -1213,7 +1213,7 @@ public final class Candidates {
         TileEntity self = view.getTileEntity();
         describe(b, self, 0);
         if (view instanceof IInterfaceHost) {
-            for (TileEntity n : neighbours(self, ((IInterfaceHost) view).getTargets())) {
+            for (TileEntity n : targets(view)) {
                 b.append(" | side ");
                 describe(b, n, 0);
             }
@@ -1309,7 +1309,7 @@ public final class Candidates {
             Set<Object> addedBuses = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
             boolean touchesItemInput = false;
             List<MTEMultiBlockBase> separated = new ArrayList<>();
-            for (TileEntity n : neighbours(self, ((IInterfaceHost) view).getTargets())) {
+            for (TileEntity n : targets(view)) {
                 if (!(n instanceof IGregTechTileEntity)) continue;
                 IMetaTileEntity mte = ((IGregTechTileEntity) n).getMetaTileEntity();
                 if (mte instanceof MTEBasicMachine || mte instanceof MTEHatchInputBus) {
@@ -1396,11 +1396,17 @@ public final class Candidates {
         if (mte instanceof IConfigurationCircuitSupport && ((IConfigurationCircuitSupport) mte).allowSelectCircuit()) {
             circuitSlot = ((IConfigurationCircuitSupport) mte).getCircuitSlot();
         }
+        // ME stocking buses show items of the network in their slots: only their configuration counts.
+        boolean stocking = mte instanceof MTEHatchInputBus && !(mte instanceof MTEHatchCraftingInputME)
+            && mte.getClass()
+                .getSimpleName()
+                .endsWith("ME");
         for (int i = 0; i < mte.getSizeInventory(); i++) {
             ItemStack s = mte.getStackInSlot(i);
             if (s == null) continue;
-            held.all.add(s);
-            if (i == circuitSlot || isNonConsumable(s, maps)) held.config.add(s);
+            boolean config = i == circuitSlot || isNonConsumable(s, maps);
+            if (!stocking || config) held.all.add(s);
+            if (config) held.config.add(s);
         }
     }
 
@@ -1426,6 +1432,105 @@ public final class Candidates {
             if (kinds.contains(exact) || kinds.contains(any)) return true;
         }
         return false;
+    }
+
+    /**
+     * Where an ME interface delivers: the blocks it faces and, when one of them belongs to another ME network (a
+     * subnet), the GT machine inputs that subnet feeds.
+     */
+    private static List<TileEntity> targets(IInterfaceViewable view) {
+        TileEntity self = view.getTileEntity();
+        if (!(view instanceof IInterfaceHost) || self == null) return new ArrayList<>();
+        EnumSet<ForgeDirection> dirs = ((IInterfaceHost) view).getTargets();
+        List<TileEntity> out = new ArrayList<>();
+        if (dirs == null) return out;
+        IGrid own = ownGrid(view);
+        World w = self.getWorldObj();
+        for (ForgeDirection d : dirs) {
+            int x = self.xCoord + d.offsetX, y = self.yCoord + d.offsetY, z = self.zCoord + d.offsetZ;
+            if (w == null || !w.blockExists(x, y, z)) continue;
+            TileEntity te = w.getTileEntity(x, y, z);
+            if (te == null) continue;
+            out.add(te);
+            if (te instanceof IGregTechTileEntity || !(te instanceof IGridHost)) continue;
+            IGrid sub = null;
+            try {
+                IGridNode n = ((IGridHost) te).getGridNode(d.getOpposite());
+                if (n != null) sub = n.getGrid();
+            } catch (Throwable ignored) {}
+            // Unknown own network: don't guess, it could be the main network with every machine of the base.
+            if (own != null && sub != null && sub != own) {
+                for (TileEntity t : subnetInputs(sub)) if (!out.contains(t)) out.add(t);
+            }
+        }
+        return out;
+    }
+
+    private static IGrid ownGrid(IInterfaceViewable view) {
+        try {
+            if (view instanceof IGridHost) {
+                IGridNode n = ((IGridHost) view).getGridNode(ForgeDirection.UNKNOWN);
+                if (n != null) return n.getGrid();
+            }
+            TileEntity te = view.getTileEntity();
+            if (te instanceof IGridHost) {
+                IGridNode n = ((IGridHost) te).getGridNode(ForgeDirection.UNKNOWN);
+                if (n != null) return n.getGrid();
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    /** Per request: GT machine inputs a subnet reaches (one grid scan per subnet). */
+    private static final Map<IGrid, List<TileEntity>> SUBNETS = new java.util.IdentityHashMap<>();
+    private static final int SUBNET_NODE_BUDGET = 4096;
+
+    /**
+     * GT inputs fed by a subnet: its own ME input buses/hatches and CRIBs, buses/machines faced by its export buses,
+     * storage buses and parts, and those next to its interface blocks.
+     */
+    private static List<TileEntity> subnetInputs(IGrid sub) {
+        List<TileEntity> cached = SUBNETS.get(sub);
+        if (cached != null) return cached;
+        List<TileEntity> out = new ArrayList<>();
+        SUBNETS.put(sub, out);
+        int budget = SUBNET_NODE_BUDGET;
+        try {
+            for (IGridNode n : sub.getNodes()) {
+                if (budget-- <= 0) break;
+                IGridHost m = n.getMachine();
+                if (m instanceof IGregTechTileEntity) {
+                    addGtInput(out, (TileEntity) m);
+                } else if (m instanceof appeng.parts.AEBasePart) {
+                    appeng.parts.AEBasePart p = (appeng.parts.AEBasePart) m;
+                    TileEntity host = p.getTile();
+                    ForgeDirection s = p.getSide();
+                    if (host != null && s != null && s != ForgeDirection.UNKNOWN) {
+                        addGtInput(out, tileAt(host, s));
+                    }
+                } else if (m instanceof IInterfaceHost && m instanceof TileEntity) {
+                    for (TileEntity t : neighbours((TileEntity) m, ((IInterfaceHost) m).getTargets()))
+                        addGtInput(out, t);
+                }
+            }
+        } catch (Throwable t) {
+            PatternRouter.LOG.debug("Subnet scan failed: {}", t.toString());
+        }
+        return out;
+    }
+
+    /** Only machine inputs: an output hatch on a subnet says nothing about what the subnet feeds. */
+    private static void addGtInput(List<TileEntity> out, TileEntity te) {
+        if (!(te instanceof IGregTechTileEntity) || out.contains(te)) return;
+        IMetaTileEntity mte = ((IGregTechTileEntity) te).getMetaTileEntity();
+        if (mte instanceof MTEHatchInputBus || mte instanceof MTEHatchInput || mte instanceof MTEBasicMachine)
+            out.add(te);
+    }
+
+    private static TileEntity tileAt(TileEntity from, ForgeDirection d) {
+        World w = from.getWorldObj();
+        int x = from.xCoord + d.offsetX, y = from.yCoord + d.offsetY, z = from.zCoord + d.offsetZ;
+        return w != null && w.blockExists(x, y, z) ? w.getTileEntity(x, y, z) : null;
     }
 
     private static List<TileEntity> neighbours(TileEntity self, EnumSet<ForgeDirection> dirs) {
