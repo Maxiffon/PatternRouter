@@ -363,6 +363,8 @@ public final class Candidates {
         .thenComparingInt(s -> (s.flags & Net.Entry.BY_NAME) != 0 ? 1 : 0)
         .thenComparingInt(
             s -> (s.flags & Net.Entry.MOLD_MATCH) != 0 ? 0 : (s.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 2 : 1)
+        // Among fitting machines, one set up exactly for this recipe before one with spare circuits/molds.
+        .thenComparingInt(s -> s.loose ? 1 : 0)
         .thenComparingInt(s -> (s.flags & Net.Entry.HAS_SAME) != 0 ? 1 : 0)
         .thenComparing(s -> s.name);
 
@@ -381,6 +383,8 @@ public final class Candidates {
         boolean unformed;
         /** The machine behind this provider is known (its recipe maps were found). */
         boolean machineSeen;
+        /** Fits, but also holds circuits/molds this recipe doesn't use (multi-circuit setups). */
+        boolean loose;
         /** Slots holding a pattern with the same output. */
         final List<Integer> sameSlots = new ArrayList<>();
 
@@ -514,8 +518,10 @@ public final class Candidates {
             if (!maps.contains(wanted)) return s;
             s.flags |= Net.Entry.RECIPE_MATCH;
             int fit = known ? fitAny(wanted, contents, held) : FIT_NONE;
-            if (fit == FIT_OK) s.flags |= Net.Entry.MOLD_MATCH;
-            else if (fit == FIT_EXTRA) s.flags |= Net.Entry.MOLD_MISMATCH;
+            if (fit == FIT_OK || fit == FIT_LOOSE) {
+                s.flags |= Net.Entry.MOLD_MATCH;
+                s.loose = fit == FIT_LOOSE;
+            } else if (fit == FIT_EXTRA) s.flags |= Net.Entry.MOLD_MISMATCH;
             else if (!nonConsumables.isEmpty()) {
                 // GT lookup failed (e.g. odd pattern amounts): fall back to the items NEI marked as not consumed.
                 boolean all = true;
@@ -531,10 +537,13 @@ public final class Candidates {
             for (RecipeMap<?> map : maps) {
                 if (!canMake(map, contents)) continue;
                 int fit = fitAny(map, contents, held);
-                if (fit == FIT_OK) {
+                if (fit == FIT_OK || fit == FIT_LOOSE) {
                     s.flags = (s.flags & ~Net.Entry.MOLD_MISMATCH) | Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
-                    break;
+                    s.loose = fit == FIT_LOOSE;
+                    if (fit == FIT_OK) break;
+                    continue;
                 }
+                if ((s.flags & Net.Entry.MOLD_MATCH) != 0) continue; // a loose fit in another map beats a mismatch
                 if (fit == FIT_EXTRA) s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MISMATCH;
             }
         }
@@ -597,19 +606,26 @@ public final class Candidates {
 
     private static final int FIT_NONE = 0; // GT finds no recipe with this output
     private static final int FIT_OK = 1; // recipe found, everything the machine is configured with is needed
-    private static final int FIT_EXTRA = 2; // recipe found, but the machine holds a circuit/mold/lens it doesn't need
+    private static final int FIT_EXTRA = 2; // recipe found, but the machine's contents also start another recipe
+    private static final int FIT_LOOSE = 3; // recipe found, spare circuits/molds in the machine change nothing
 
     /**
-     * Runs the same GT recipe lookup the machine would: pattern inputs plus everything the machine holds. Then each
-     * configuration item (circuit, mold, lens) is removed in turn; if the recipe is still found, that item is not
-     * part of it and would at best be ignored, at worst select another recipe.
+     * Runs the same GT recipe lookup the machine would: pattern inputs plus everything the machine holds.
+     * <ul>
+     * <li>no recipe with the pattern's output: doesn't fit;</li>
+     * <li>these contents also start a recipe with another output (a spare circuit or mold selects it): doesn't fit,
+     * GT may run that one instead;</li>
+     * <li>otherwise it fits; if some circuit/mold/lens can be removed and the recipe is still found, the machine is
+     * set up for more recipes than this one (several circuits in one bus) - still fine, listed after exact ones.</li>
+     * </ul>
      */
     private static int fit(RecipeMap<?> map, PatternContents contents, Held held) {
         if (contents.recipeIn(map, held.all) == null) return FIT_NONE;
+        if (contents.startsOtherRecipe(map, held.all)) return FIT_EXTRA;
         for (ItemStack x : held.config) {
             List<ItemStack> without = new ArrayList<>();
             for (ItemStack h : held.all) if (!sameItem(h, x)) without.add(h);
-            if (contents.recipeIn(map, without) != null) return FIT_EXTRA;
+            if (contents.recipeIn(map, without) != null) return FIT_LOOSE;
         }
         return FIT_OK;
     }
@@ -673,6 +689,22 @@ public final class Candidates {
                     .orElse(null);
             } catch (Throwable t) {
                 return null;
+            }
+        }
+
+        /** Some recipe with another output also matches these inputs plus machine contents. */
+        boolean startsOtherRecipe(RecipeMap<?> map, List<ItemStack> held) {
+            List<ItemStack> in = new ArrayList<>(items);
+            in.addAll(held);
+            try {
+                return map.findRecipeQuery()
+                    .items(in.toArray(new ItemStack[0]))
+                    .fluids(fluids.toArray(new FluidStack[0]))
+                    .dontCheckStackSizes(true)
+                    .findAll()
+                    .anyMatch(r -> !producedBy(r));
+            } catch (Throwable t) {
+                return false;
             }
         }
 
@@ -1325,14 +1357,15 @@ public final class Candidates {
         return held;
     }
 
-    /** fit() for the machine; with per-bus possibilities the best one counts (OK, then EXTRA, then NONE). */
+    /** fit() for the machine; with per-bus possibilities the best one counts (OK, LOOSE, EXTRA, NONE). */
     private static int fitAny(RecipeMap<?> map, PatternContents contents, Held held) {
         if (held.perBus == null) return fit(map, contents, held);
         int best = FIT_NONE;
         for (Held v : held.perBus) {
             int f = fit(map, contents, v);
             if (f == FIT_OK) return FIT_OK;
-            if (f == FIT_EXTRA) best = FIT_EXTRA;
+            if (f == FIT_LOOSE) best = FIT_LOOSE;
+            else if (f == FIT_EXTRA && best == FIT_NONE) best = FIT_EXTRA;
         }
         return best;
     }
