@@ -746,6 +746,7 @@ public final class Candidates {
          */
         boolean producedInProportion(GTRecipe r) {
             if (!producedBy(r)) return false;
+            if (!usesAllInputs(r)) return false;
             long k = multiplier(r);
             if (k <= 0) return k == 0; // 0: nothing to compare against, accept
             if (r.mInputs != null) {
@@ -769,6 +770,36 @@ public final class Candidates {
                         }
                     }
                 }
+            }
+            return true;
+        }
+
+        /**
+         * Every pattern input is something the recipe takes. EBF "dust + circuit 1" and "dust + circuit 11 + 100 L
+         * oganesson" make the same ingot: a machine set to [1] would run the first one and the oganesson from the
+         * pattern would pile up in its hatch.
+         */
+        boolean usesAllInputs(GTRecipe r) {
+            for (FluidStack have : fluids) {
+                if (have == null) continue;
+                boolean used = false;
+                if (r.mFluidInputs != null) {
+                    for (FluidStack need : r.mFluidInputs) used |= need != null && need.isFluidEqual(have);
+                }
+                if (!used) return false;
+            }
+            for (ItemStack have : items) {
+                if (have == null) continue;
+                boolean used = false;
+                if (r.mInputs != null) {
+                    for (ItemStack need : r.mInputs) {
+                        if (need != null && matches(need, have)) {
+                            used = true;
+                            break;
+                        }
+                    }
+                }
+                if (!used) return false;
             }
             return true;
         }
