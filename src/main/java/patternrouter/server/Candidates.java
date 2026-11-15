@@ -216,10 +216,13 @@ public final class Candidates {
             List<Scored> scored = score(grid, player, player.worldObj, category, nonConsumables, pattern);
             // Machine not seen (chest, conduit in between) but the interface is named after it: weak match.
             // Only when the machine is unknown: "Precise Assembler" must not pull in interfaces of plain assemblers.
+            // Only names the player gave: an unnamed AE2 interface shows its neighbour's name ("Molecular Assembler").
             if (recipeMapOf(category) != null) {
                 List<String> words = nameWords(machineName);
                 for (Scored s : scored) {
-                    if ((s.flags & Net.Entry.RECIPE_MATCH) == 0 && !s.machineSeen && nameMatches(s.name, words)) {
+                    if ((s.flags & Net.Entry.RECIPE_MATCH) == 0 && !s.machineSeen
+                        && customNamed(s.view)
+                        && nameMatches(s.name, words)) {
                         s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.BY_NAME;
                     }
                 }
@@ -355,12 +358,29 @@ public final class Candidates {
         return false;
     }
 
-    /** Order: has space -> machine -> mold -> no duplicate -> name. */
+    /** The player renamed this provider (anvil, name press); otherwise AE2 shows the neighbour block's name. */
+    private static boolean customNamed(IInterfaceViewable view) {
+        try {
+            if (view instanceof appeng.helpers.ICustomNameObject) {
+                return ((appeng.helpers.ICustomNameObject) view).hasCustomName();
+            }
+            TileEntity te = view.getTileEntity();
+            if (te instanceof appeng.helpers.ICustomNameObject) {
+                return ((appeng.helpers.ICustomNameObject) te).hasCustomName();
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    /**
+     * Order: remembered -> machine seen -> has space -> mold -> no duplicate -> name. A guess by name stays below every
+     * machine that was actually seen, even a full one.
+     */
     private static final Comparator<Scored> ORDER = Comparator
         .<Scored>comparingInt(s -> (s.flags & Net.Entry.REMEMBERED) != 0 ? 0 : 1)
-        .thenComparingInt(s -> s.free > 0 ? 0 : 1)
         .thenComparingInt(s -> (s.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0 : 1)
         .thenComparingInt(s -> (s.flags & Net.Entry.BY_NAME) != 0 ? 1 : 0)
+        .thenComparingInt(s -> s.free > 0 ? 0 : 1)
         .thenComparingInt(
             s -> (s.flags & Net.Entry.MOLD_MATCH) != 0 ? 0 : (s.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 2 : 1)
         // Among fitting machines, one set up exactly for this recipe before one with spare circuits/molds.
