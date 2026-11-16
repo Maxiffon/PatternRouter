@@ -52,6 +52,7 @@ import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.helpers.IInterfaceHost;
 import appeng.items.misc.ItemEncodedPattern;
+import appeng.parts.p2p.PartP2PInterface;
 import appeng.util.item.AEItemStack;
 import gregtech.api.enums.ItemList;
 import gregtech.api.interfaces.IConfigurationCircuitSupport;
@@ -443,8 +444,8 @@ public final class Candidates {
             .getSupportedClasses()) {
                 for (IGridNode node : g.getMachines(cls)) {
                     if (!(node.getMachine() instanceof IInterfaceViewable)) continue;
-                    IInterfaceViewable view = (IInterfaceViewable) node.getMachine();
-                    if (!seen.add(view) || !view.shouldDisplay() || !node.isActive()) continue;
+                    IInterfaceViewable view = p2pInput((IInterfaceViewable) node.getMachine());
+                    if (!seen.add(view) || !view.shouldDisplay() || !isActive(view, node)) continue;
                     IInventory inv = view.getPatterns();
                     if (inv == null) continue;
                     try {
@@ -460,6 +461,32 @@ public final class Candidates {
                 }
             }
         return out;
+    }
+
+    /**
+     * A P2P interface output answers getPatterns()/getName() with its input's slots and name (AE2 does this for the
+     * interface terminal), so every output looked like a separate interface placed at the output. Patterns put there
+     * land in the input and the input pushes them to the block it faces. List the input instead: once, at its own
+     * place, with the machine it feeds. An output without an input stays as it is.
+     */
+    private static IInterfaceViewable p2pInput(IInterfaceViewable view) {
+        try {
+            if (view instanceof PartP2PInterface && ((PartP2PInterface) view).isOutput()) {
+                PartP2PInterface in = ((PartP2PInterface) view).getInput();
+                if (in != null) return in;
+            }
+        } catch (Throwable ignored) {}
+        return view;
+    }
+
+    private static boolean isActive(IInterfaceViewable view, IGridNode listed) {
+        if (view == listed.getMachine()) return listed.isActive();
+        try {
+            IGridNode n = ((IGridHost) view).getGridNode(ForgeDirection.UNKNOWN);
+            return n != null && n.isActive();
+        } catch (Throwable t) {
+            return listed.isActive();
+        }
     }
 
     private static Scored scoreOne(IInterfaceViewable view, IInventory inv, RecipeMap<?> wanted,
