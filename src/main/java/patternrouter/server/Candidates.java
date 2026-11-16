@@ -619,7 +619,11 @@ public final class Candidates {
     private static boolean canMake(RecipeMap<?> map, PatternContents contents) {
         return CAN_MAKE.computeIfAbsent(map, m -> {
             try {
-                for (GTRecipe r : m.getAllRecipes()) if (contents.producedBy(r)) return true;
+                Collection<GTRecipe> all = m.getAllRecipes();
+                // Furnace, microwave and other non-GT maps keep no recipe list: they build a recipe on request
+                // (vanilla smelting), so only the lookup itself can tell. Without this the Multi Smelter never fits.
+                if (all.isEmpty()) return true;
+                for (GTRecipe r : all) if (contents.producedBy(r)) return true;
             } catch (Throwable ignored) {}
             return false;
         });
