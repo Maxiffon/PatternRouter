@@ -23,8 +23,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.ChatComponentText;
-import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.util.IChatComponent;
 import net.minecraft.world.World;
@@ -73,21 +71,13 @@ import gregtech.api.util.GTRecipe;
 import gregtech.common.tileentities.machines.MTEHatchCraftingInputME;
 import patternrouter.Net;
 import patternrouter.PatternRouter;
+import patternrouter.common.ListNote;
 
 /**
  * Server side: finds interfaces and CRIBs in the pattern terminal's ME network that fit the recipe and puts
  * the pattern into the chosen one.
  */
 public final class Candidates {
-
-    public static final int NOTE_NONE = 0;
-    public static final int NOTE_NO_PATTERN = 1; // no encoded pattern in the output slot
-    public static final int NOTE_NO_GRID = 2; // terminal is not on a network
-    public static final int NOTE_DENIED = 3; // no build permission in this network
-    public static final int NOTE_NO_MACHINE = 4; // no matching machine, showing all interfaces
-    public static final int NOTE_UNKNOWN_RECIPE = 5; // not a GT recipe, or not transferred from NEI
-    public static final int NOTE_UNFORMED = 6; // no matching machine, and some hatch has no formed multiblock
-    public static final int NOTE_NO_ASSEMBLER = 7; // crafting pattern, no molecular assembler in the network
 
     private static final int MAX_ENTRIES = 40;
 
@@ -241,11 +231,11 @@ public final class Candidates {
             }
         }
         if (pattern == null) {
-            reply.note = NOTE_NO_PATTERN;
+            reply.note = ListNote.NO_PATTERN.wire();
         } else if (grid == null) {
-            reply.note = NOTE_NO_GRID;
+            reply.note = ListNote.NO_GRID.wire();
         } else if (!canBuild(grid, player)) {
-            reply.note = NOTE_DENIED;
+            reply.note = ListNote.DENIED.wire();
         } else {
             long started = System.nanoTime();
             category = checkedCategory(category, nonConsumables, pattern, player.worldObj);
@@ -310,8 +300,9 @@ public final class Candidates {
             boolean anyUnformed = false;
             for (Scored s : scored) anyUnformed |= s.unformed;
             boolean crafting = PatternContents.of(pattern, player.worldObj).craftable;
-            if (!anyMachine) reply.note = crafting ? NOTE_NO_ASSEMBLER
-                : wanted == null ? NOTE_UNKNOWN_RECIPE : anyUnformed ? NOTE_UNFORMED : NOTE_NO_MACHINE;
+            if (!anyMachine) reply.note = (crafting ? ListNote.NO_ASSEMBLER
+                : wanted == null ? ListNote.UNKNOWN_RECIPE : anyUnformed ? ListNote.UNFORMED : ListNote.NO_MACHINE)
+                    .wire();
             // Show only matching machines if any; otherwise every interface with free space.
             if (anyMachine) scored.removeIf(s -> (s.flags & (Net.Entry.RECIPE_MATCH | Net.Entry.REMEMBERED)) == 0);
             else scored.removeIf(s -> s.free == 0 && (s.flags & Net.Entry.REMEMBERED) == 0);
@@ -632,26 +623,6 @@ public final class Candidates {
             }
         }
         return s;
-    }
-
-    /**
-     * Caption like AE2's CRIB one: "[5]" for a programmed circuit, item names for molds/lenses. Sent as JSON so the
-     * client translates names in the player's language.
-     */
-    private static String configCaption(List<ItemStack> config) {
-        IChatComponent c = new ChatComponentText("{");
-        boolean first = true;
-        Set<String> seen = new HashSet<>();
-        for (ItemStack st : config) {
-            String key = Item.getIdFromItem(st.getItem()) + ":" + st.getItemDamage();
-            if (!seen.add(key)) continue;
-            if (!first) c.appendText(", ");
-            first = false;
-            if (isCircuit(st)) c.appendText("[" + st.getItemDamage() + "]");
-            else c.appendSibling(new ChatComponentTranslation(st.getUnlocalizedName() + ".name"));
-        }
-        c.appendText("}");
-        return IChatComponent.Serializer.func_150696_a(c);
     }
 
     private static List<ItemStack> uniqueConfig(List<ItemStack> config) {

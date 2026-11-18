@@ -36,7 +36,8 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import patternrouter.Config;
 import patternrouter.Net;
-import patternrouter.server.Candidates;
+import patternrouter.common.Items;
+import patternrouter.common.ListNote;
 
 /**
  * Pattern terminal side panel in AE2 window style. Built from Forge GUI events and plain buttons; AE2 GUIs are not
@@ -638,7 +639,7 @@ public class ClientPanel {
             if (b.length() > 1) b.append(", ");
             String n;
             try {
-                n = isProgrammedCircuit(st) ? "[" + st.getItemDamage() + "]" : st.getDisplayName();
+                n = Items.isProgrammedCircuit(st) ? "[" + st.getItemDamage() + "]" : st.getDisplayName();
             } catch (Throwable t) {
                 n = "?";
             }
@@ -646,14 +647,6 @@ public class ClientPanel {
         }
         return b.append("}")
             .toString();
-    }
-
-    private static boolean isProgrammedCircuit(ItemStack st) {
-        try {
-            return gregtech.api.enums.ItemList.Circuit_Integrated.getItem() == st.getItem();
-        } catch (Throwable t) {
-            return false;
-        }
     }
 
     private static String translate(String raw) {
@@ -738,23 +731,25 @@ public class ClientPanel {
             return I18n.format("patternrouter.note.noreply");
         }
         if (waiting) return I18n.format("patternrouter.note.waiting");
-        switch (note) {
-            case Candidates.NOTE_NO_PATTERN:
+        ListNote received = ListNote.fromWire(note);
+        if (received == null) return "";
+        switch (received) {
+            case NO_PATTERN:
                 return I18n.format("patternrouter.note.nopattern");
-            case Candidates.NOTE_NO_GRID:
+            case NO_GRID:
                 return I18n.format("patternrouter.note.nogrid");
-            case Candidates.NOTE_DENIED:
+            case DENIED:
                 return I18n.format("patternrouter.note.denied");
-            case Candidates.NOTE_NO_MACHINE:
+            case NO_MACHINE:
                 return I18n.format("patternrouter.note.nomachine");
-            case Candidates.NOTE_UNKNOWN_RECIPE:
+            case UNKNOWN_RECIPE:
                 return I18n.format("patternrouter.note.unknown");
-            case Candidates.NOTE_UNFORMED:
+            case UNFORMED:
                 return I18n.format("patternrouter.note.unformed");
-            case Candidates.NOTE_NO_ASSEMBLER:
+            case NO_ASSEMBLER:
                 return I18n.format("patternrouter.note.noassembler");
             default:
-                return entries.isEmpty() && note >= 0 ? I18n.format("patternrouter.note.empty") : "";
+                return entries.isEmpty() ? I18n.format("patternrouter.note.empty") : "";
         }
     }
 

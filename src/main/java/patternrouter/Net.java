@@ -201,7 +201,7 @@ public final class Net {
     public static class CandidateList implements IMessage {
 
         public int token;
-        /** 0 = fine; otherwise why the list is empty (see Candidates.NOTE_*). */
+        /** {@link patternrouter.common.ListNote} by ordinal. */
         public int note;
         public List<Entry> entries = new ArrayList<>();
         /** Existing patterns with the same output (where they are). */
