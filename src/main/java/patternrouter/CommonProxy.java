@@ -13,8 +13,8 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
-import patternrouter.server.Bench;
-import patternrouter.server.Candidates;
+import patternrouter.server.BenchCommand;
+import patternrouter.server.CandidateSearch;
 
 public class CommonProxy {
 
@@ -30,7 +30,7 @@ public class CommonProxy {
 
         @SubscribeEvent
         public void onWorldUnload(WorldEvent.Unload event) {
-            if (!event.world.isRemote) Candidates.onWorldUnload(event.world);
+            if (!event.world.isRemote) CandidateSearch.forgetWorld(event.world);
         }
     }
 
@@ -44,7 +44,7 @@ public class CommonProxy {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.START) return;
         try {
-            Bench.tick();
+            BenchCommand.tick();
         } catch (Throwable t) {
             PatternRouter.LOG.error("Pattern Router bench tick failed", t);
         }
@@ -79,8 +79,8 @@ public class CommonProxy {
 
     @SubscribeEvent
     public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.player instanceof EntityPlayerMP) Bench.onLogout((EntityPlayerMP) event.player);
-        Candidates.forget(event.player.getUniqueID());
+        if (event.player instanceof EntityPlayerMP player) BenchCommand.onLogout(player);
+        CandidateSearch.forgetPlayer(event.player.getUniqueID());
     }
 
     private static final long SLOW_TASK_MS = 2000;

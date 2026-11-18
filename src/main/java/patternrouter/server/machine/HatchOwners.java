@@ -1,4 +1,4 @@
-package patternrouter.server;
+package patternrouter.server.machine;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -22,15 +22,17 @@ import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
  * loads). Older GT (e.g. GTNH 2.9.0-RC-1) lacks the field, and some multiblocks leave it empty: then the loaded
  * multiblocks are scanned for the hatch in their input lists, once per tick.
  */
-final class Owners {
+public final class HatchOwners {
 
-    private static final Field OWNER_FIELD = findField();
+    private static final Field OWNER_FIELD = findOwnerField();
 
     /**
      * Last scan of each world, valid for the tick it was made in. Per world, so providers in several dimensions
      * don't make one request rescan the worlds in turn.
      */
     private static final Map<World, Scan> SCANS = new IdentityHashMap<>();
+
+    private HatchOwners() {}
 
     private static final class Scan {
 
@@ -43,9 +45,7 @@ final class Owners {
         }
     }
 
-    private Owners() {}
-
-    private static Field findField() {
+    private static Field findOwnerField() {
         try {
             Field f = MTEHatch.class.getDeclaredField("ae2CraftingIconOwner");
             f.setAccessible(true);
@@ -56,7 +56,7 @@ final class Owners {
     }
 
     /** Controller coordinates of a formed multiblock using this hatch, or null. */
-    static ChunkCoordinates ownerOf(IMetaTileEntity hatch, World world) {
+    public static ChunkCoordinates ownerOf(IMetaTileEntity hatch, World world) {
         if (!(hatch instanceof MTEHatch)) return null;
         if (OWNER_FIELD != null) {
             try {
@@ -69,16 +69,26 @@ final class Owners {
         return world == null ? null : scan(world).get(hatch);
     }
 
+    /** The controller's tile entity for a hatch at {@code hatchTile}, or null if unowned or not loaded. */
+    public static TileEntity controllerTile(IMetaTileEntity hatch, TileEntity hatchTile) {
+        World world = hatchTile.getWorldObj();
+        ChunkCoordinates owner = ownerOf(hatch, world);
+        return owner == null ? null : Worlds.loadedTile(world, owner);
+    }
+
+    /** A world unloads: forget its multiblocks. */
+    public static void forget(World world) {
+        SCANS.remove(world);
+    }
+
     private static Map<Object, ChunkCoordinates> scan(World world) {
         long tick = world.getTotalWorldTime();
         Scan last = SCANS.get(world);
         if (last != null && last.tick == tick) return last.owners;
         Map<Object, ChunkCoordinates> map = new IdentityHashMap<>();
         for (Object o : new ArrayList<Object>(world.loadedTileEntityList)) {
-            if (!(o instanceof IGregTechTileEntity)) continue;
-            IMetaTileEntity mte = ((IGregTechTileEntity) o).getMetaTileEntity();
-            if (!(mte instanceof MTEMultiBlockBase)) continue;
-            MTEMultiBlockBase multi = (MTEMultiBlockBase) mte;
+            if (!(o instanceof IGregTechTileEntity gtTile)) continue;
+            if (!(gtTile.getMetaTileEntity() instanceof MTEMultiBlockBase multi)) continue;
             TileEntity te = (TileEntity) o;
             ChunkCoordinates c = new ChunkCoordinates(te.xCoord, te.yCoord, te.zCoord);
             addAll(map, multi.mInputBusses, c);
@@ -87,11 +97,6 @@ final class Owners {
         }
         SCANS.put(world, new Scan(tick, map));
         return map;
-    }
-
-    /** A world unloads: forget its multiblocks. */
-    static void forget(World world) {
-        SCANS.remove(world);
     }
 
     private static void addAll(Map<Object, ChunkCoordinates> map, Collection<?> hatches, ChunkCoordinates c) {

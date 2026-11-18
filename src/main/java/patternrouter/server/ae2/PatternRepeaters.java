@@ -1,4 +1,4 @@
-package patternrouter.server;
+package patternrouter.server.ae2;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,12 +12,11 @@ import appeng.parts.misc.PartPatternRepeater;
  * machine that sits in its own network). Kept in its own class: older AE2 builds have no Pattern Repeater, and then
  * only the terminal's network is used.
  */
-final class Repeaters {
+final class PatternRepeaters {
 
-    /** Upper bound on networks followed through repeaters. */
     private static final int MAX_GRIDS = 32;
 
-    private Repeaters() {}
+    private PatternRepeaters() {}
 
     /** The network itself first, then every network linked to it by repeaters (transitively). */
     static List<IGrid> reachable(IGrid main) {
@@ -27,22 +26,16 @@ final class Repeaters {
             for (int i = 0; i < out.size() && out.size() < MAX_GRIDS; i++) {
                 for (IGridNode node : out.get(i)
                     .getMachines(PartPatternRepeater.class)) {
-                    Object m = node.getMachine();
-                    if (!(m instanceof PartPatternRepeater)) continue;
-                    PartPatternRepeater pair = ((PartPatternRepeater) m).getPair();
-                    IGridNode pn = pair == null ? null : pair.getGridNode();
-                    IGrid g = pn == null ? null : pn.getGrid();
-                    if (g != null && !containsSame(out, g)) out.add(g);
+                    if (!(node.getMachine() instanceof PartPatternRepeater repeater)) continue;
+                    PartPatternRepeater pair = repeater.getPair();
+                    IGridNode pairNode = pair == null ? null : pair.getGridNode();
+                    IGrid pairGrid = pairNode == null ? null : pairNode.getGrid();
+                    if (pairGrid != null && !GridAccess.containsSame(out, pairGrid)) out.add(pairGrid);
                 }
             }
         } catch (Throwable ignored) {
             // No Pattern Repeater in this AE2 build.
         }
         return out;
-    }
-
-    static boolean containsSame(List<IGrid> grids, IGrid g) {
-        for (IGrid x : grids) if (x == g) return true;
-        return false;
     }
 }

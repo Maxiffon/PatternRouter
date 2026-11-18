@@ -14,7 +14,8 @@ import cpw.mods.fml.common.network.simpleimpl.MessageContext;
 import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import cpw.mods.fml.relauncher.Side;
 import io.netty.buffer.ByteBuf;
-import patternrouter.server.Candidates;
+import patternrouter.server.CandidateSearch;
+import patternrouter.server.PatternPlacement;
 
 /** Network messages: list request, list, upload, result. */
 public final class Net {
@@ -67,7 +68,7 @@ public final class Net {
                 ServerQueue.submitAction(
                     player.getUniqueID(),
                     "extract",
-                    () -> Candidates.handleExtract(player, msg.token, msg.index));
+                    () -> PatternPlacement.extract(player, msg.token, msg.index));
                 return null;
             }
         }
@@ -129,7 +130,7 @@ public final class Net {
                 EntityPlayerMP player = ctx.getServerHandler().playerEntity;
                 ServerQueue.submitLatestRequest(
                     player.getUniqueID(),
-                    () -> Candidates.handleRequest(player, msg.category, msg.nonConsumables, msg.machineName));
+                    () -> CandidateSearch.handleRequest(player, msg.category, msg.nonConsumables, msg.machineName));
                 return null;
             }
         }
@@ -168,7 +169,7 @@ public final class Net {
                 ServerQueue.submitAction(
                     player.getUniqueID(),
                     "upload",
-                    () -> Candidates.handleUpload(player, msg.token, msg.index));
+                    () -> PatternPlacement.upload(player, msg.token, msg.index));
                 return null;
             }
         }
