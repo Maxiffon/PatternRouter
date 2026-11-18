@@ -1,4 +1,5 @@
 patternrouter.title=上传样板到
+patternrouter.title.short=上传到
 patternrouter.tip.click=点击将样板放到这里
 patternrouter.status.uploading=正在上传…
 patternrouter.result.ok=已上传：%s

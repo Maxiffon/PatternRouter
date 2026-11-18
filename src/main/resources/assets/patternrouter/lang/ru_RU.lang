@@ -1,4 +1,5 @@
 patternrouter.title=Куда загрузить шаблон
+patternrouter.title.short=Куда загрузить
 patternrouter.tip.click=Клик — положить шаблон сюда
 patternrouter.status.uploading=Загружаю…
 patternrouter.result.ok=Загружено: %s

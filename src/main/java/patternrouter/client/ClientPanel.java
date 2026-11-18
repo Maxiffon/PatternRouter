@@ -717,11 +717,9 @@ public class ClientPanel {
                 ? (scroll + 1) + "-" + Math.min(scroll + rowsCap, entries.size()) + "/" + entries.size()
                 : "";
             int titleRoom = xPosition + width - TITLE_BUTTONS - (page.isEmpty() ? 0 : fr.getStringWidth(page) + 4) - tx;
-            fr.drawString(
-                fr.trimStringToWidth(I18n.format("patternrouter.title"), titleRoom),
-                tx,
-                yPosition + 7,
-                GUI_TEXT);
+            String title = I18n.format("patternrouter.title");
+            if (fr.getStringWidth(title) > titleRoom) title = I18n.format("patternrouter.title.short");
+            fr.drawString(ellipsize(fr, title, titleRoom), tx, yPosition + 7, GUI_TEXT);
             if (!page.isEmpty()) {
                 // Left of the side arrow in the title bar.
                 fr.drawString(
@@ -810,12 +808,31 @@ public class ClientPanel {
             if (hover) drawRect(xPosition + 8, sy + 1, xPosition + 24, sy + 17, 0x60FFFFFF);
             FontRenderer fr = mc.fontRenderer;
             int tx = xPosition + 29, tw = width - 33;
-            fr.drawString(fr.trimStringToWidth(e.name, tw), tx, yPosition + 2, GUI_TEXT);
-            if (e.suffix != null && !e.suffix.isEmpty()) {
-                fr.drawString(fr.trimStringToWidth(e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
+            boolean hasSuffix = e.suffix != null && !e.suffix.isEmpty();
+            if (!hasSuffix && fr.getStringWidth(e.name) > tw) {
+                // No caption: the long name gets the second line too.
+                List<String> lines = fr.listFormattedStringToWidth(e.name, tw);
+                fr.drawString(lines.get(0), tx, yPosition + 2, GUI_TEXT);
+                String rest = e.name.substring(
+                    Math.min(
+                        e.name.length(),
+                        lines.get(0)
+                            .length()))
+                    .trim();
+                fr.drawString(ellipsize(fr, rest, tw), tx, yPosition + 12, GUI_TEXT);
+            } else {
+                fr.drawString(ellipsize(fr, e.name, tw), tx, yPosition + 2, GUI_TEXT);
+                if (hasSuffix) fr.drawString(ellipsize(fr, e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
             }
-            fr.drawString(fr.trimStringToWidth(flagsLine(e, false), tw), tx, yPosition + 22, GUI_TEXT_DIM);
+            fr.drawString(ellipsize(fr, flagsLine(e, fr, tw), tw), tx, yPosition + 22, GUI_TEXT_DIM);
         }
+    }
+
+    /** The text cut to this width, ending in "…" when something was cut. */
+    static String ellipsize(FontRenderer fr, String s, int w) {
+        if (s == null || fr.getStringWidth(s) <= w) return s == null ? "" : s;
+        String dots = "…";
+        return fr.trimStringToWidth(s, Math.max(0, w - fr.getStringWidth(dots))) + dots;
     }
 
     /** Conflict row: machine that already holds a pattern for this output. The Extract button is separate. */
@@ -840,9 +857,9 @@ public class ClientPanel {
             drawItem(mc, e.icon, xPosition + 8, sy + 1);
             FontRenderer fr = mc.fontRenderer;
             int tx = xPosition + 29, tw = width - 29 - 60;
-            fr.drawString(fr.trimStringToWidth(e.name, tw), tx, yPosition + 2, GUI_TEXT);
+            fr.drawString(ellipsize(fr, e.name, tw), tx, yPosition + 2, GUI_TEXT);
             if (e.suffix != null && !e.suffix.isEmpty()) {
-                fr.drawString(fr.trimStringToWidth(e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
+                fr.drawString(ellipsize(fr, e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
             }
         }
 

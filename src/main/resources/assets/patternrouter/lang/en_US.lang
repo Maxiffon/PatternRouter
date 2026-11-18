@@ -1,4 +1,5 @@
 patternrouter.title=Upload pattern to
+patternrouter.title.short=Upload to
 patternrouter.tip.click=Click to put the pattern here
 patternrouter.status.uploading=Uploading…
 patternrouter.result.ok=Uploaded: %s

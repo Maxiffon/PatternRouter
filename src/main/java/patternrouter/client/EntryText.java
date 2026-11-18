@@ -44,17 +44,35 @@ final class EntryText {
 
     /** Flags line: dark colors in the list (light AE2 background), bright ones in tooltips (dark background). */
     static String flagsLine(ProviderEntry e, boolean tooltip) {
+        return flagsLine(e, tooltip, 0);
+    }
+
+    /**
+     * The list row's flags line in this width: words dropped first from "remembered", then from every flag, so the free
+     * slot count always shows.
+     */
+    static String flagsLine(ProviderEntry e, net.minecraft.client.gui.FontRenderer fr, int width) {
+        for (int compact = 0; compact < 2; compact++) {
+            String s = flagsLine(e, false, compact);
+            if (fr.getStringWidth(s) <= width) return s;
+        }
+        return flagsLine(e, false, 2);
+    }
+
+    /** compact: 0 full words, 1 "remembered" as a bare star, 2 symbols only. */
+    private static String flagsLine(ProviderEntry e, boolean tooltip, int compact) {
         String good = color(tooltip ? EnumChatFormatting.GREEN : EnumChatFormatting.DARK_GREEN);
         String bad = color(tooltip ? EnumChatFormatting.RED : EnumChatFormatting.DARK_RED);
         String warn = color(tooltip ? EnumChatFormatting.YELLOW : EnumChatFormatting.GOLD);
         String dim = color(tooltip ? EnumChatFormatting.GRAY : EnumChatFormatting.DARK_GRAY);
+        boolean words = compact < 2;
         StringBuilder sb = new StringBuilder();
-        if (e.has(ProviderEntry.REMEMBERED)) flag(sb, warn, "★ ", "patternrouter.flag.remembered");
-        if (e.has(ProviderEntry.SETUP_FITS)) flag(sb, good, "✔ ", "patternrouter.flag.mold");
-        else if (e.has(ProviderEntry.SETUP_CONFLICTS)) flag(sb, bad, "✘ ", conflictKey(e));
-        else if (e.has(ProviderEntry.BY_NAME)) flag(sb, warn, "≈ ", "patternrouter.flag.byname");
-        else if (e.has(ProviderEntry.RECIPE_MATCH)) flag(sb, good, "✔ ", "patternrouter.flag.machine");
-        if (e.has(ProviderEntry.HAS_SAME_OUTPUT)) flag(sb, warn, "", "patternrouter.flag.same");
+        if (e.has(ProviderEntry.REMEMBERED)) flag(sb, warn, "★", compact == 0 ? "patternrouter.flag.remembered" : null);
+        if (e.has(ProviderEntry.SETUP_FITS)) flag(sb, good, "✔", words ? "patternrouter.flag.mold" : null);
+        else if (e.has(ProviderEntry.SETUP_CONFLICTS)) flag(sb, bad, "✘", words ? conflictKey(e) : null);
+        else if (e.has(ProviderEntry.BY_NAME)) flag(sb, warn, "≈", words ? "patternrouter.flag.byname" : null);
+        else if (e.has(ProviderEntry.RECIPE_MATCH)) flag(sb, good, "✔", words ? "patternrouter.flag.machine" : null);
+        if (e.has(ProviderEntry.HAS_SAME_OUTPUT)) flag(sb, warn, "≡", words ? "patternrouter.flag.same" : null);
         if (e.freeSlots == 0) sb.append(bad)
             .append(I18n.format("patternrouter.flag.full"));
         else sb.append(dim)
@@ -68,10 +86,17 @@ final class EntryText {
         return "patternrouter.flag.othermold";
     }
 
+    /** A flag: symbol and words, or the bare symbol when key is null. "Same output" has no symbol of its own. */
     private static void flag(StringBuilder sb, String color, String symbol, String key) {
-        sb.append(color)
-            .append(symbol)
-            .append(I18n.format(key))
+        sb.append(color);
+        if (key == null) {
+            sb.append(symbol)
+                .append(' ');
+            return;
+        }
+        if (!symbol.equals("≡")) sb.append(symbol)
+            .append(' ');
+        sb.append(I18n.format(key))
             .append("  ");
     }
 
