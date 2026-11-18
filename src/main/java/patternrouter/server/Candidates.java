@@ -29,6 +29,7 @@ import net.minecraft.util.IChatComponent;
 import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.IFluidHandler;
 import net.minecraftforge.oredict.OreDictionary;
 
 import appeng.api.AEApi;
@@ -53,6 +54,7 @@ import appeng.container.implementations.ContainerPatternTerm;
 import appeng.helpers.IInterfaceHost;
 import appeng.items.misc.ItemEncodedPattern;
 import appeng.parts.p2p.PartP2PInterface;
+import appeng.util.InventoryAdaptor;
 import appeng.util.item.AEItemStack;
 import gregtech.api.enums.ItemList;
 import gregtech.api.interfaces.IConfigurationCircuitSupport;
@@ -441,7 +443,9 @@ public final class Candidates {
         Set<IInterfaceViewable> seen = new HashSet<>();
         // The terminal's network plus networks linked by Pattern Repeaters where the player may build.
         List<IGrid> grids = new ArrayList<>();
-        for (IGrid g : linkedGrids(grid)) if (g == grid || canBuild(g, player)) grids.add(g);
+        List<IGrid> linked = linkedGrids(grid);
+        lookupGrids = linked;
+        for (IGrid g : linked) if (g == grid || canBuild(g, player)) grids.add(g);
         for (IGrid g : grids) for (Class<? extends IInterfaceViewable> cls : AEApi.instance()
             .registries()
             .interfaceTerminal()
@@ -1567,11 +1571,29 @@ public final class Candidates {
                 if (n != null) sub = n.getGrid();
             } catch (Throwable ignored) {}
             // Unknown own network: don't guess, it could be the main network with every machine of the base.
-            if (own != null && sub != null && sub != own) {
+            // A network the lookup itself covers is not a subnet, and a cable or bus that takes nothing from this side
+            // (not an inventory for the interface) does not lead anywhere.
+            if (own != null && sub != null
+                && sub != own
+                && !Repeaters.containsSame(lookupGrids, sub)
+                && acceptsPushFrom(te, d.getOpposite())) {
                 for (TileEntity t : subnetInputs(sub)) if (!out.contains(t)) out.add(t);
             }
         }
         return out;
+    }
+
+    /**
+     * The neighbour takes what an interface pushes into it from this side: the same inventory check AE2's interface
+     * uses, plus AE2 interfaces and fluid receivers (fluid-only patterns go to a subnet's fluid interface).
+     */
+    private static boolean acceptsPushFrom(TileEntity te, ForgeDirection side) {
+        if (te instanceof IInterfaceHost || te instanceof IFluidHandler) return true;
+        try {
+            return InventoryAdaptor.getAdaptor(te, side) != null;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private static IGrid ownGrid(IInterfaceViewable view) {
@@ -1591,7 +1613,10 @@ public final class Candidates {
 
     /** Per request: GT machine inputs a subnet reaches (one grid scan per subnet). */
     private static final Map<IGrid, List<TileEntity>> SUBNETS = new java.util.IdentityHashMap<>();
-    private static final int SUBNET_NODE_BUDGET = 4096;
+    /** A network this big is somebody's main network, not a subnet feeding one machine group. */
+    private static final int SUBNET_MAX_NODES = 4096;
+    /** Per request: the terminal's network and those linked by Pattern Repeaters. */
+    private static List<IGrid> lookupGrids = Collections.emptyList();
 
     /**
      * GT inputs fed by a subnet: its own ME input buses/hatches and CRIBs, buses/machines faced by its export buses,
@@ -1602,10 +1627,10 @@ public final class Candidates {
         if (cached != null) return cached;
         List<TileEntity> out = new ArrayList<>();
         SUBNETS.put(sub, out);
-        int budget = SUBNET_NODE_BUDGET;
         try {
+            if (sub.getNodes()
+                .size() > SUBNET_MAX_NODES) return out;
             for (IGridNode n : sub.getNodes()) {
-                if (budget-- <= 0) break;
                 IGridHost m = n.getMachine();
                 if (m instanceof IGregTechTileEntity) {
                     addGtInput(out, (TileEntity) m);
