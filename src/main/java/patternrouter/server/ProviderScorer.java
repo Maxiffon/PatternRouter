@@ -129,7 +129,11 @@ final class ProviderScorer {
         RecipeMap<?> assemblyLine = gregtech.api.recipe.RecipeMaps.assemblylineVisualRecipes;
         if (!modes.current.contains(assemblyLine) || (wanted != null && wanted != assemblyLine)) return;
         Boolean researched = AssemblyLineData.researched(modes.machines, contents.outputItem());
-        if (researched == null || (wanted == null && !researched)) return;
+        if (researched == null) return;
+        // No NEI tab: an unresearched line still counts when GT's lookup found the pattern among assembly line
+        // recipes. That lookup's "conflict" means nothing here: many lines share components (hatches of each tier),
+        // the line runs only what its sticks hold.
+        if (wanted == null && !researched && !s.has(ProviderEntry.RECIPE_MATCH)) return;
         s.flags &= ~(ProviderEntry.SETUP_FITS | ProviderEntry.SETUP_CONFLICTS);
         s.flags |= ProviderEntry.RECIPE_MATCH | (researched ? ProviderEntry.SETUP_FITS : ProviderEntry.SETUP_CONFLICTS);
         s.reason = researched ? ""
