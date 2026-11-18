@@ -126,15 +126,7 @@ final class AeStyle {
         List<String> lines = new java.util.ArrayList<>();
         for (String l : rawLines) {
             if (fr.getStringWidth(l) <= maxW) lines.add(l);
-            else {
-                // Wrapped parts keep the line's colour.
-                String color = net.minecraft.util.EnumChatFormatting.WHITE.toString();
-                for (String part : fr.listFormattedStringToWidth(l, maxW)) {
-                    String fmt = net.minecraft.client.gui.FontRenderer.getFormatFromString(part);
-                    lines.add(part.startsWith("§") ? part : color + part);
-                    if (!fmt.isEmpty()) color = fmt;
-                }
-            }
+            else lines.addAll(fr.listFormattedStringToWidth(l, maxW)); // carries the colour onto each part
         }
         int w = 0;
         for (String l : lines) w = Math.max(w, fr.getStringWidth(l));

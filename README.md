@@ -34,6 +34,20 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
 - **Renamed interfaces** match the NEI tab name ("≈ by name") when the machine behind them can't be seen. Only names
   you gave count (an unnamed AE2 interface shows its neighbour's name, e.g. "Molecular Assembler"). Words shared by
   many machines ("furnace", "electric") don't count: "Electric Blast Furnace" does not match "Arc Furnace".
+- **Can the machine actually run it?** A machine that takes the recipe but can't run it is marked, with the reason in
+  the tooltip. Multiblocks are asked through their own GT processing logic: power from their energy, multi-amp,
+  laser or wireless hatches (with their EU discount), then their own recipe check (coil heat with its per-voltage
+  bonus, glass or casing tier where the machine limits recipes by it, ...). Single blocks: voltage, cleanroom
+  (formed and clean), low gravity, multiblock-only compression recipes. Short marks in the row: *can't power it*,
+  *too cold*, *no cleanroom*, *not in space*, *won't start*.
+- **Assembly lines** fit only when their data sticks (controller slot, data access hatches, optical or wireless data
+  input) hold the recipe; otherwise *not researched*. Behind a P2P interface every line must have it.
+- **Why not?** Hover a red row: the tooltip says why (other mode and which one, no research, power needed vs given,
+  heat needed vs the machine's, GT's own message in your language).
+- **Duplicates**: putting a pattern whose output is already in the network asks *Remove the duplicates?* Yes moves
+  every copy into your inventory once the new one is in; No keeps them (parallel crafting); Esc cancels.
+- **P2P interfaces**: the input is listed, the machines next to its outputs are checked; unlinked P2Ps are hidden.
+- **Transvector Interfaces** (Thaumic Tinkerer) and **SFM relays**: the machine behind them is found.
 - **Pattern Repeaters**: machines in networks linked by AE2 Pattern Repeaters are found too.
 - **Subnets**: an interface that pushes into another ME network finds the GT machines that subnet feeds (its ME input
   buses/hatches, export or storage buses on machine buses, interfaces next to machines). Only a neighbour that takes
@@ -52,13 +66,15 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
 - **Respects AE2 security** (build permission).
 - English, Russian, Chinese.
 - **NEI makes room** for the panel (`INEIGuiAdapter`).
-- **AE2 GUIs are not patched.** The panel uses Forge GUI events only.
+- **Light touch on AE2's GUI**: the panel is built from Forge GUI events; two small client mixins only take the
+  mouse wheel over the panel and the keys while its search field or question has focus.
 
 ## Requirements
 Client **and** server. Needs AE2 (GTNH fork), GT5-Unofficial and NotEnoughItems — all already in GTNH. Built against
-GTNH 2.9.0-RC-2; also loads on RC-1. Tested in single player, on the official 2.9.0-RC-2 dedicated server pack and on
-a large live server. Client and server need versions with the same network channel (all 1.3.x share one); most
-machine checks run on the server, so update the server to get them.
+GTNH 2.9.0-RC-2; runs on 2.9.0. Tested in single player, on the official 2.9.0-RC-2 dedicated server pack and on
+a large live server. 1.3.x and 1.4 talk to each other (1.4 adds its data at the end of the messages, older versions
+skip it); most machine checks run on the server, so update the server to get them. A 1.4 client on an older server
+says so in the tooltip instead of guessing a reason.
 
 Install: put `patternrouter-<version>.jar` (not `-dev` / `-sources`) into `mods`. If only one side has the mod, players
 can still connect; the panel finds nothing and after 10 s says that the server does not answer.
@@ -81,12 +97,18 @@ case (no NEI category: the GT lookup goes over every machine), 50 runs each:
 Every real request is timed in `logs/fml-server-latest.log` (debug); over 200 ms it is a console warning, over 2 s
 the server thread stack is logged.
 
-## Panel position
+## Panel
 - Drag the panel by its title to put it anywhere; the position is kept relative to the terminal.
 - The arrow in the title snaps it back to the automatic place on the left or right.
+- The square in the title hides interfaces with no free slot (and no room for a capacity card).
+- The search field filters the list by name.
+- Scroll with the wheel or the scroll bar; the list always stops on whole rows.
+- Drag the bottom-right corner to show more or fewer rows (2-20).
+- The pattern button under AE2's button column left of the terminal folds the panel away (no lookups while folded).
 - NEI hides its items under the panel; automatic placement stays below NEI's page bar.
 
-Saved in `config/patternrouter.cfg` (`panelSide`, `panelCustom`, `panelX`, `panelY`).
+Saved in `config/patternrouter.cfg` (`panelSide`, `panelCustom`, `panelX`, `panelY`, `hideFull`, `panelRows`,
+`panelHidden`).
 
 ## Building
 ```
