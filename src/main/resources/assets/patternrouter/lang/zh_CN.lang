@@ -15,6 +15,7 @@ patternrouter.flag.full=已满
 patternrouter.flag.free=空闲 %s
 patternrouter.flag.free.long=空闲槽位：%s
 patternrouter.note.waiting=正在查找机器…
+patternrouter.note.noreply=服务器没有响应。服务器上可能没有安装 Pattern Router，或其版本过旧或过新。
 patternrouter.note.nopattern=编码一个样板后，这里会显示适用的机器。
 patternrouter.note.nogrid=终端未连接到ME网络。
 patternrouter.note.denied=你在此ME网络中没有建造权限。

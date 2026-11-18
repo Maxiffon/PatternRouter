@@ -27,6 +27,8 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 
 import appeng.container.implementations.ContainerPatternTerm;
+import appeng.container.slot.SlotFake;
+import appeng.container.slot.SlotRestrictedInput;
 import appeng.items.misc.ItemEncodedPattern;
 import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.ObfuscationReflectionHelper;
@@ -100,6 +102,10 @@ public class ClientPanel {
     /** When to send the request for lastKey (ms), -1 = already sent. */
     private long sendAt = -1;
     private static final long DEBOUNCE_MS = 150;
+    /** No answer this long after a request: the server most likely lacks the mod (or another channel version). */
+    private static final long REPLY_TIMEOUT_MS = 10_000;
+    /** When the last list request went out (ms), 0 = none outstanding. */
+    private long requestSentAt;
     private int token;
     private List<Net.Entry> entries = Collections.emptyList();
     private List<Net.Entry> conflicts = Collections.emptyList();
@@ -324,6 +330,7 @@ public class ClientPanel {
         note = msg.note;
         scroll = 0;
         waiting = false;
+        requestSentAt = 0;
     }
 
     public void onResult(Net.Result msg) {
@@ -554,15 +561,24 @@ public class ClientPanel {
 
     // ------------------------------------------------------------------ logic
 
+    /**
+     * The encoded pattern in the terminal's output slot (slot 1 of its pattern inventory, the one the server reads).
+     * Ghost slots of the crafting grid may show an encoded pattern as an ingredient: never take those.
+     */
     private ItemStack findPattern() {
+        ItemStack fallback = null;
         for (Object o : gui.inventorySlots.inventorySlots) {
             Slot s = (Slot) o;
-            if (s.inventory instanceof InventoryPlayer) continue;
+            if (s.inventory instanceof InventoryPlayer || s instanceof SlotFake) continue;
             ItemStack st = s.getStack();
-            if (st != null && st.getItem() instanceof ItemEncodedPattern) return st;
+            if (st == null || !(st.getItem() instanceof ItemEncodedPattern)) continue;
+            if (s instanceof SlotRestrictedInput && s.getSlotIndex() == ENCODED_OUTPUT_SLOT) return st;
+            if (fallback == null) fallback = st;
         }
-        return null;
+        return fallback;
     }
+
+    private static final int ENCODED_OUTPUT_SLOT = 1;
 
     private static String keyOf(ItemStack pattern) {
         return pattern.getTagCompound() == null ? ""
@@ -581,6 +597,7 @@ public class ClientPanel {
                 ctx ? RecipeContext.category : "",
                 ctx ? RecipeContext.nonConsumables : Collections.emptyList(),
                 ctx ? RecipeContext.machineName : ""));
+        requestSentAt = System.currentTimeMillis();
         entries = Collections.emptyList();
         conflicts = Collections.emptyList();
         note = -1;
@@ -595,6 +612,7 @@ public class ClientPanel {
         conflicts = Collections.emptyList();
         note = -1;
         waiting = false;
+        requestSentAt = 0;
         scroll = 0;
     }
 
@@ -716,6 +734,9 @@ public class ClientPanel {
     }
 
     private String noteText() {
+        if (waiting && requestSentAt > 0 && System.currentTimeMillis() - requestSentAt > REPLY_TIMEOUT_MS) {
+            return I18n.format("patternrouter.note.noreply");
+        }
         if (waiting) return I18n.format("patternrouter.note.waiting");
         switch (note) {
             case Candidates.NOTE_NO_PATTERN:

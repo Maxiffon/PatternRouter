@@ -14,6 +14,7 @@ patternrouter.flag.full=full
 patternrouter.flag.free=free %s
 patternrouter.flag.free.long=free slots: %s
 patternrouter.note.waiting=Looking for machines…
+patternrouter.note.noreply=The server does not answer. Pattern Router may be missing on the server, or its version there is too old or too new.
 patternrouter.note.nopattern=Encode a pattern and matching machines will show up here.
 patternrouter.note.nogrid=The terminal is not connected to an ME network.
 patternrouter.note.denied=No build permission in this ME network.

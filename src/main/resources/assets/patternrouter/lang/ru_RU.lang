@@ -14,6 +14,7 @@ patternrouter.flag.full=мест нет
 patternrouter.flag.free=своб. %s
 patternrouter.flag.free.long=свободных слотов: %s
 patternrouter.note.waiting=Ищу машины…
+patternrouter.note.noreply=Сервер не отвечает. Возможно, на сервере нет Pattern Router или там слишком старая или новая версия.
 patternrouter.note.nopattern=Закодируй шаблон — здесь появятся подходящие машины.
 patternrouter.note.nogrid=Терминал не подключён к ME-сети.
 patternrouter.note.denied=Нет прав строить в этой ME-сети.
