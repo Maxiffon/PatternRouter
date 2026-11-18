@@ -76,3 +76,4 @@ patternrouter.dupes.hint=否：保留（并行运行配方）。Esc：取消。
 patternrouter.dupes.yes=是
 patternrouter.dupes.no=否
 patternrouter.result.dupes=已放入 %s，移除重复：%s
+patternrouter.why.unreadable=机器无法运行此配方（客户端无法读取服务器给出的原因：GregTech 版本不同）

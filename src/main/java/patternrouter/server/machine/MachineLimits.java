@@ -131,19 +131,35 @@ public final class MachineLimits {
      * above MV for the blast furnace); -1 if it keeps it under another name.
      */
     private static int heatOf(MTEMultiBlockBase multi) {
-        for (Class<?> c = multi.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+        Field f = HEAT_FIELDS.computeIfAbsent(multi.getClass(), MachineLimits::findHeatField);
+        if (f == NO_FIELD) return -1;
+        try {
+            Object v = f.get(multi);
+            return v instanceof Number num ? num.intValue() : -1;
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** Heat field per machine class, found once ({@link #NO_FIELD} if it has none). */
+    private static final java.util.Map<Class<?>, Field> HEAT_FIELDS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Field NO_FIELD = field(ProcessingLogic.class, "availableVoltage");
+
+    private static Field findHeatField(Class<?> type) {
+        for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
             for (Field f : c.getDeclaredFields()) {
                 String n = f.getName()
                     .toLowerCase();
                 if (!n.contains("heatingcapacity") && !n.equals("mheat") && !n.equals("heat")) continue;
+                if (!f.getType()
+                    .isPrimitive()) continue;
                 try {
                     f.setAccessible(true);
-                    Object v = f.get(multi);
-                    if (v instanceof Number num) return num.intValue();
+                    return f;
                 } catch (Throwable ignored) {}
             }
         }
-        return -1;
+        return NO_FIELD;
     }
 
     private static Method method(Class<?> owner, String name, Class<?>... params) {
@@ -169,7 +185,7 @@ public final class MachineLimits {
     /** Why it can't run, as text the client shows in the player's language. */
     public static final class Reason {
 
-        /** "pr:" + chat JSON of our own message, or "gt:" + GT result id + "|" + its NBT. */
+        /** "pr:" + chat JSON of our own message, or "gt:" + GT result id + "|" + its NBT (binary, Base64). */
         public final String wire;
 
         private Reason(String wire) {
@@ -202,7 +218,20 @@ public final class MachineLimits {
         }
 
         static Reason machine(CheckRecipeResult result) {
-            return new Reason("gt:" + result.getID() + "|" + result.writeToNBT(new net.minecraft.nbt.NBTTagCompound()));
+            return new Reason(
+                "gt:" + result.getID() + "|" + encode(result.writeToNBT(new net.minecraft.nbt.NBTTagCompound())));
+        }
+
+        /** NBT as Base64 of its binary form: survives the trip exactly, unlike its text form. */
+        private static String encode(net.minecraft.nbt.NBTTagCompound nbt) {
+            try {
+                java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                net.minecraft.nbt.CompressedStreamTools.write(nbt, new java.io.DataOutputStream(bytes));
+                return java.util.Base64.getEncoder()
+                    .encodeToString(bytes.toByteArray());
+            } catch (Throwable t) {
+                return "";
+            }
         }
 
         public static Reason ours(IChatComponent c) {

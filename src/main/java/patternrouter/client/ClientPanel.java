@@ -119,7 +119,9 @@ public class ClientPanel {
     private DialogBox dialog;
     private GuiButton dialogYes, dialogNo;
     /** After "yes": duplicates asked to be taken out, and taken out so far. */
-    private int dupesExpected, dupesDone;
+    private int dupesExpected, dupesDone, dupesSent, dupeToken;
+    /** "Yes" was answered: the duplicates wait for the upload's OK. */
+    private boolean awaitingUpload;
     private String uploadedTo = "";
     /** The current click closed the question; cleared next frame. */
     private boolean clickClosedDialog;
@@ -196,6 +198,9 @@ public class ClientPanel {
             resetList();
             query = "";
             if (search != null) search.setText("");
+            dialogFor = null;
+            awaitingUpload = false;
+            dupesExpected = dupesDone = dupesSent = 0;
         }
         if (search != null) search.updateCursorCounter();
     }
@@ -204,6 +209,11 @@ public class ClientPanel {
      * A key in the terminal (from the AE2 GUI mixin): typed into the search field while it has focus, and eaten so AE2,
      * NEI and the inventory key don't act on it. Esc and Enter only leave the field.
      */
+    /** The panel takes the keyboard: its search field has focus or the duplicates question is open. */
+    public boolean wantsKeys(Object screen) {
+        return screen == gui && gui != null && (dialogFor != null || search != null && search.isFocused());
+    }
+
     public boolean onKey(Object screen, char typed, int key) {
         if (screen == gui && gui != null && dialogFor != null) {
             // The duplicates question: Enter = yes, Esc = cancel (nothing uploaded), other keys do nothing.
@@ -465,6 +475,7 @@ public class ClientPanel {
         int id = e.button.id;
         if (id < BASE_ID || id > BASE_ID + 200) return;
         e.setCanceled(true);
+        if (clickClosedDialog) return; // the click that closed the question presses nothing else
         if (dialogFor != null) {
             // While the duplicates question is open only its buttons work.
             if (e.button == dialogYes) answerDialog(true);
@@ -519,14 +530,30 @@ public class ClientPanel {
         PatternRouterNetwork.channel.sendToServer(new UploadPatternMessage(token, received.indexOf(picked)));
         setStatus(I18n.format("patternrouter.status.uploading"), GUI_TEXT_DIM, 3000);
         if (!removeDupes) return;
-        // The server keeps this list after the upload; it takes them out one by one, checking each slot still
-        // holds the listed pattern.
+        // Duplicates go only after the server says the upload worked (a full interface must not lose every copy),
+        // then one at a time: the server takes a few actions per player per tick and drops the rest.
         uploadedTo = lastActionName;
+        dupeToken = token;
         dupesExpected = conflicts.size();
         dupesDone = 0;
-        for (int i = 0; i < conflicts.size(); i++) {
-            PatternRouterNetwork.channel.sendToServer(new ExtractConflictMessage(token, i));
+        dupesSent = 0;
+        awaitingUpload = true;
+    }
+
+    /** The next duplicate of the "yes" answer, or the end of it. */
+    private void sendNextDupe() {
+        if (dupesSent < dupesExpected) {
+            PatternRouterNetwork.channel.sendToServer(new ExtractConflictMessage(dupeToken, dupesSent++));
+        } else {
+            endDupes();
         }
+    }
+
+    private void endDupes() {
+        boolean wasRunning = dupesExpected > 0;
+        awaitingUpload = false;
+        dupesExpected = dupesDone = dupesSent = 0;
+        if (wasRunning) lastKey = null; // refresh the list once at the end
     }
 
     /** Highlight the provider in the world with AE2's own highlighter (as its interface terminal does). */
@@ -590,6 +617,21 @@ public class ClientPanel {
     public void onResult(ActionResultMessage msg) {
         String name = lastActionName != null ? lastActionName : resolveName(msg.providerName, null);
         int good = 0x1E7A1E, bad = 0xB00000;
+        boolean uploaded = msg.code == ActionResultMessage.OK || msg.code == ActionResultMessage.OK_WITH_CARD;
+        if (awaitingUpload) {
+            // "Yes" to the duplicates: only a successful upload lets them go.
+            awaitingUpload = false;
+            if (uploaded) sendNextDupe();
+            else endDupes();
+        } else if (dupesExpected > 0) {
+            if (msg.code == ActionResultMessage.EXTRACTED) {
+                dupesDone++;
+                setStatus(I18n.format("patternrouter.result.dupes", uploadedTo, dupesDone), good, 5000);
+                sendNextDupe();
+                return;
+            }
+            endDupes(); // a duplicate couldn't be taken (inventory full, changed): stop, say why below
+        }
         switch (msg.code) {
             case ActionResultMessage.OK:
                 setStatus(I18n.format("patternrouter.result.ok", name), good, 4000);
@@ -604,14 +646,7 @@ public class ClientPanel {
                 setStatus(I18n.format("patternrouter.result.maxcards", name), bad, 5000);
                 break;
             case ActionResultMessage.EXTRACTED:
-                if (dupesExpected > 0) {
-                    // One of the duplicates taken out after "yes": one status line for all of them.
-                    dupesDone++;
-                    setStatus(I18n.format("patternrouter.result.dupes", uploadedTo, dupesDone), good, 5000);
-                    if (dupesDone >= dupesExpected) dupesExpected = 0;
-                } else {
-                    setStatus(I18n.format("patternrouter.result.extracted", name), good, 4000);
-                }
+                setStatus(I18n.format("patternrouter.result.extracted", name), good, 4000);
                 lastKey = null; // refresh the conflict list
                 break;
             case ActionResultMessage.INVENTORY_FULL:
@@ -1131,7 +1166,7 @@ public class ClientPanel {
 
         @Override
         public boolean mousePressed(Minecraft mc, int mx, int my) {
-            if (!visible || dialogFor != null || !AeStyle.isOver(this, mx, my)) return false;
+            if (!visible || dialogFor != null || clickClosedDialog || !AeStyle.isOver(this, mx, my)) return false;
             int top = thumbY(), h = thumbHeight();
             barGrab = my >= top && my < top + h ? my - top : h / 2;
             barDragging = true;

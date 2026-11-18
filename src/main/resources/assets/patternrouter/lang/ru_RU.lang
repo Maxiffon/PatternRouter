@@ -76,3 +76,4 @@ patternrouter.dupes.hint=«Нет» — оставить (параллелить
 patternrouter.dupes.yes=Да
 patternrouter.dupes.no=Нет
 patternrouter.result.dupes=Положил в %s, убрано дубликатов: %s
+patternrouter.why.unreadable=Машина не запустит рецепт (причину с сервера этот клиент прочитать не смог: другая версия GregTech)

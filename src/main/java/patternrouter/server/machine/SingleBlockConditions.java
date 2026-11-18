@@ -60,17 +60,35 @@ final class SingleBlockConditions {
         }
     }
 
-    /** GT's config: low-gravity recipes only in space (off in some packs). */
+    /** GT's config: low-gravity recipes only in space (off in some packs). Looked up once. */
+    private static final Object GT_PROXY = gtProxy();
+    private static final Field LOW_GRAV_PROCESSING = GT_PROXY == null ? null
+        : publicField(GT_PROXY, "mLowGravProcessing");
+
     private static boolean lowGravityProcessing() {
         try {
-            Object proxy = Class.forName("gregtech.GTMod")
-                .getField("proxy")
-                .get(null);
-            Field f = proxy.getClass()
-                .getField("mLowGravProcessing");
-            return f.getBoolean(proxy);
+            return LOW_GRAV_PROCESSING != null && LOW_GRAV_PROCESSING.getBoolean(GT_PROXY);
         } catch (Throwable t) {
             return false;
+        }
+    }
+
+    private static Object gtProxy() {
+        try {
+            return Class.forName("gregtech.GTMod")
+                .getField("proxy")
+                .get(null);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static Field publicField(Object owner, String name) {
+        try {
+            return owner.getClass()
+                .getField(name);
+        } catch (Throwable t) {
+            return null;
         }
     }
 

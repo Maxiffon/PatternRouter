@@ -21,6 +21,8 @@ final class ProviderScore {
     boolean takesCard;
     /** Why it doesn't fit (ProviderEntry.reason), "" if nothing specific. */
     String reason = "";
+    /** The recipe map the pattern was matched in (NEI tab, or GT's lookup); null if none. */
+    gregtech.api.recipe.RecipeMap<?> matchedMap;
     /** ProviderEntry flags. */
     int flags;
     int dim, x, y, z;

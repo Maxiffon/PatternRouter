@@ -4,7 +4,6 @@ import java.util.List;
 
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.JsonToNBT;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.EnumChatFormatting;
@@ -43,7 +42,14 @@ final class EntryText {
                 gregtech.api.recipe.check.CheckRecipeResult sample = gregtech.api.recipe.check.CheckRecipeResultRegistry
                     .getSampleFromRegistry(id);
                 gregtech.api.recipe.check.CheckRecipeResult result = sample.newInstance();
-                if (bar >= 0) result.readFromNBT((NBTTagCompound) JsonToNBT.func_150315_a(r.substring(bar + 1)));
+                String data = bar < 0 ? "" : r.substring(bar + 1);
+                if (!data.isEmpty()) {
+                    byte[] bytes = java.util.Base64.getDecoder()
+                        .decode(data);
+                    NBTTagCompound nbt = net.minecraft.nbt.CompressedStreamTools
+                        .read(new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes)));
+                    result.readFromNBT(nbt);
+                }
                 e.reasonText = result.getDisplayString();
                 e.reasonFlag = id.contains("heat") ? "patternrouter.flag.heat"
                     : id.contains("power") || id.contains("voltage") ? "patternrouter.flag.power"
@@ -51,6 +57,11 @@ final class EntryText {
             }
         } catch (Throwable ignored) {
             // GT result unknown to this client's GT: fall back to the flags
+        }
+        if (e.reasonText.isEmpty() && !r.isEmpty()) {
+            // The server said why, but this client can't read it (another GT): don't put a guess in its place.
+            e.reasonText = I18n.format("patternrouter.why.unreadable");
+            e.reasonFlag = "patternrouter.flag.cantrun";
         }
         if (e.reasonText.isEmpty() && e.has(ProviderEntry.SETUP_CONFLICTS)) {
             e.reasonText = I18n.format(

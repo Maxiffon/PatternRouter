@@ -101,19 +101,19 @@ final class ProviderScorer {
     private static void scoreLimits(ProviderScore s, MachineModes modes, RecipeMap<?> wanted, PatternContents contents,
         MachineInventory machine) {
         if (!s.has(ProviderEntry.RECIPE_MATCH) || s.has(ProviderEntry.SETUP_CONFLICTS) || contents.isEmpty()) return;
-        MachineLimits.Reason why = null;
-        RecipeMap<?> assemblyLine = gregtech.api.recipe.RecipeMaps.assemblylineVisualRecipes;
-        if (modes.current.contains(assemblyLine) && (wanted == null || wanted == assemblyLine)) {
+        // The map the pattern was matched in: the NEI tab, or the one GT's lookup fitted. Never just the first map
+        // with some recipe from these inputs, that may be another recipe of a multi-mode machine.
+        RecipeMap<?> map = s.matchedMap;
+        if (map == null) return;
+        MachineLimits.Reason why;
+        if (map == gregtech.api.recipe.RecipeMaps.assemblylineVisualRecipes) {
             RecipeAssemblyLine r = AssemblyLineData.recipeFor(modes.machines, contents.outputItem());
-            if (r != null) why = MachineLimits.whyNotPower(modes.machines, MTEAssemblyLine.class, r.mEUt);
+            if (r == null) return;
+            why = MachineLimits.whyNotPower(modes.machines, MTEAssemblyLine.class, r.mEUt);
         } else {
-            for (RecipeMap<?> map : modes.current) {
-                if (wanted != null && map != wanted) continue;
-                GTRecipe recipe = contents.recipeIn(map, machine.items);
-                if (recipe == null) continue;
-                why = MachineLimits.whyNot(modes.machines, map, recipe);
-                break;
-            }
+            GTRecipe recipe = contents.recipeIn(map, machine.items);
+            if (recipe == null) return;
+            why = MachineLimits.whyNot(modes.machines, map, recipe);
         }
         if (why == null) return;
         s.flags = (s.flags & ~ProviderEntry.SETUP_FITS) | ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS;
@@ -128,6 +128,10 @@ final class ProviderScorer {
         PatternContents contents) {
         RecipeMap<?> assemblyLine = gregtech.api.recipe.RecipeMaps.assemblylineVisualRecipes;
         if (!modes.current.contains(assemblyLine) || (wanted != null && wanted != assemblyLine)) return;
+        // Another mode decided already (its reason says which); a recipe matched for another machine behind the
+        // same provider is not the assembly line's business.
+        if (s.has(ProviderEntry.OTHER_MODE)) return;
+        if (s.matchedMap != null && s.matchedMap != assemblyLine) return;
         Boolean researched = AssemblyLineData.researched(modes.machines, contents.outputItem());
         if (researched == null) {
             // Sticks unreadable: GT's lookup "conflict" says nothing about an assembly line (lines share
@@ -143,6 +147,7 @@ final class ProviderScorer {
         if (wanted == null && !researched && !s.has(ProviderEntry.RECIPE_MATCH)) return;
         s.flags &= ~(ProviderEntry.SETUP_FITS | ProviderEntry.SETUP_CONFLICTS);
         s.flags |= ProviderEntry.RECIPE_MATCH | (researched ? ProviderEntry.SETUP_FITS : ProviderEntry.SETUP_CONFLICTS);
+        s.matchedMap = assemblyLine;
         s.reason = researched ? ""
             : MachineLimits.Reason.ours(new ChatComponentTranslation("patternrouter.why.research")).wire;
     }
@@ -203,6 +208,7 @@ final class ProviderScorer {
         PatternContents contents, MachineInventory machine, List<ItemStack> nonConsumables) {
         if (!maps.contains(wanted)) return;
         s.flags |= ProviderEntry.RECIPE_MATCH;
+        s.matchedMap = wanted;
         RecipeFit fit = contents.isEmpty() ? RecipeFit.NONE : RecipeFit.best(wanted, contents, machine);
         if (fit.fits()) {
             s.flags |= ProviderEntry.SETUP_FITS;
@@ -248,6 +254,8 @@ final class ProviderScorer {
             if (!RecipeMaps.canMake(map, contents)) continue;
             RecipeFit fit = RecipeFit.best(map, contents, machine);
             if (fit.fits()) {
+                // The first fit, or an exact one after it: the map the machine will run the pattern in.
+                if (!s.has(ProviderEntry.SETUP_FITS) || fit == RecipeFit.EXACT) s.matchedMap = map;
                 s.flags = (s.flags & ~ProviderEntry.SETUP_CONFLICTS) | ProviderEntry.RECIPE_MATCH
                     | ProviderEntry.SETUP_FITS;
                 s.hasSpareSetup = fit == RecipeFit.WITH_SPARE_SETUP;
@@ -255,7 +263,10 @@ final class ProviderScorer {
                 continue;
             }
             if (s.has(ProviderEntry.SETUP_FITS)) continue; // a loose fit in another map beats a mismatch
-            if (fit == RecipeFit.CONFLICTING) s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS;
+            if (fit == RecipeFit.CONFLICTING) {
+                s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS;
+                if (s.matchedMap == null) s.matchedMap = map;
+            }
         }
     }
 
