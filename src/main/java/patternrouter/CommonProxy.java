@@ -20,20 +20,26 @@ import patternrouter.server.CandidateSearch;
 
 public class CommonProxy {
 
+    /** At most this many queued tasks per tick. */
+    private static final int MAX_TASKS_PER_TICK = 64;
+    /** At most ~25 ms of lookups per tick (half a tick); the rest waits for the next tick. At least one task runs. */
+    private static final long TICK_BUDGET_NS = 25_000_000L;
+    /** A task this slow is reported in the console. */
+    private static final long SLOW_TASK_WARN_MS = 200;
+    /** A task still running after this long gets the server thread's stack logged, so a freeze can be attributed. */
+    private static final long STUCK_TASK_MS = 2000;
+
+    private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "PatternRouter-watchdog");
+        t.setDaemon(true);
+        return t;
+    });
+
     public void init() {
         FMLCommonHandler.instance()
             .bus()
             .register(this);
         MinecraftForge.EVENT_BUS.register(new WorldEvents());
-    }
-
-    /** Forge-bus events (the proxy itself listens on the FML bus). */
-    public static final class WorldEvents {
-
-        @SubscribeEvent
-        public void onWorldUnload(WorldEvent.Unload event) {
-            if (!event.world.isRemote) CandidateSearch.forgetWorld(event.world);
-        }
     }
 
     /** Client only: candidate list received. */
@@ -50,33 +56,41 @@ public class CommonProxy {
         } catch (Throwable t) {
             PatternRouter.LOG.error("Pattern Router bench tick failed", t);
         }
-        Runnable r;
-        int budget = 64;
-        // At most ~25 ms of lookups per tick (half a tick); the rest waits for the next tick. At least one task runs.
+        runQueuedTasks();
+    }
+
+    private static void runQueuedTasks() {
+        Runnable task;
+        int budget = MAX_TASKS_PER_TICK;
         long deadline = System.nanoTime() + TICK_BUDGET_NS;
         boolean first = true;
-        while (budget-- > 0 && (first || System.nanoTime() < deadline) && (r = ServerQueue.poll()) != null) {
+        while (budget-- > 0 && (first || System.nanoTime() < deadline) && (task = ServerQueue.poll()) != null) {
             first = false;
-            // If a task runs long, log where the server thread is, so a freeze can be attributed for sure.
-            Thread server = Thread.currentThread();
-            ScheduledFuture<?> watch = WATCHDOG.schedule(() -> {
-                StringBuilder b = new StringBuilder("Pattern Router task is still running after ").append(SLOW_TASK_MS)
-                    .append(" ms; server thread at:");
-                for (StackTraceElement e : server.getStackTrace()) b.append("\n\tat ")
-                    .append(e);
-                PatternRouter.LOG.warn(b.toString());
-            }, SLOW_TASK_MS, TimeUnit.MILLISECONDS);
-            long started = System.nanoTime();
-            try {
-                r.run();
-            } catch (Throwable t) {
-                PatternRouter.LOG.error("Server task failed", t);
-            } finally {
-                watch.cancel(false);
-                long ms = (System.nanoTime() - started) / 1_000_000;
-                if (ms >= 200) PatternRouter.LOG.warn("Pattern Router server task took {} ms", ms);
-            }
+            runWatched(task);
         }
+    }
+
+    private static void runWatched(Runnable task) {
+        Thread server = Thread.currentThread();
+        ScheduledFuture<?> watch = WATCHDOG.schedule(() -> logStack(server), STUCK_TASK_MS, TimeUnit.MILLISECONDS);
+        long started = System.nanoTime();
+        try {
+            task.run();
+        } catch (Throwable t) {
+            PatternRouter.LOG.error("Server task failed", t);
+        } finally {
+            watch.cancel(false);
+            long ms = (System.nanoTime() - started) / 1_000_000;
+            if (ms >= SLOW_TASK_WARN_MS) PatternRouter.LOG.warn("Pattern Router server task took {} ms", ms);
+        }
+    }
+
+    private static void logStack(Thread server) {
+        StringBuilder b = new StringBuilder("Pattern Router task is still running after ").append(STUCK_TASK_MS)
+            .append(" ms; server thread at:");
+        for (StackTraceElement e : server.getStackTrace()) b.append("\n\tat ")
+            .append(e);
+        PatternRouter.LOG.warn(b.toString());
     }
 
     @SubscribeEvent
@@ -85,12 +99,12 @@ public class CommonProxy {
         CandidateSearch.forgetPlayer(event.player.getUniqueID());
     }
 
-    private static final long SLOW_TASK_MS = 2000;
-    private static final long TICK_BUDGET_NS = 25_000_000L;
+    /** Forge-bus events (the proxy itself listens on the FML bus). */
+    public static final class WorldEvents {
 
-    private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "PatternRouter-watchdog");
-        t.setDaemon(true);
-        return t;
-    });
+        @SubscribeEvent
+        public void onWorldUnload(WorldEvent.Unload event) {
+            if (!event.world.isRemote) CandidateSearch.forgetWorld(event.world);
+        }
+    }
 }
