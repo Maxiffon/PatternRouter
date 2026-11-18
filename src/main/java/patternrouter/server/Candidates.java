@@ -876,7 +876,7 @@ public final class Candidates {
         Conflict c = session.conflicts.get(index);
         IInterfaceViewable view = c.view.get();
         IGrid grid = gridOf((ContainerPatternTerm) open);
-        if (view == null || grid == null || !sameGrid(view, grid)) {
+        if (view == null || grid == null || !isLoaded(view) || !sameGrid(view, grid)) {
             Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
             return;
         }
@@ -885,7 +885,7 @@ public final class Candidates {
             return;
         }
         IInventory inv = view.getPatterns();
-        ItemStack now = c.slot < inv.getSizeInventory() ? inv.getStackInSlot(c.slot) : null;
+        ItemStack now = inv != null && c.slot < inv.getSizeInventory() ? inv.getStackInSlot(c.slot) : null;
         // The slot must still hold exactly the pattern we listed; otherwise someone changed it.
         if (now == null || !ItemStack.areItemStacksEqual(now, c.pattern)) {
             Net.CH.sendTo(new Net.Result(Net.Result.GONE, rawName(view)), player);
@@ -894,9 +894,12 @@ public final class Candidates {
         ItemStack taken = now.copy();
         inv.setInventorySlotContents(c.slot, null);
         inv.markDirty();
-        if (!player.inventory.addItemStackToInventory(taken)) {
-            inv.setInventorySlotContents(c.slot, now); // inventory full: put it back
+        player.inventory.addItemStackToInventory(taken);
+        if (taken.stackSize > 0) {
+            // Inventory full (or only part fit): what is left goes back into the slot.
+            inv.setInventorySlotContents(c.slot, taken.stackSize == now.stackSize ? now : taken);
             inv.markDirty();
+            player.inventoryContainer.detectAndSendChanges();
             Net.CH.sendTo(new Net.Result(Net.Result.INV_FULL, rawName(view)), player);
             return;
         }
@@ -922,7 +925,7 @@ public final class Candidates {
         IInterfaceViewable view = session.targets.get(index)
             .get();
         IGrid grid = gridOf(term);
-        if (view == null || grid == null || !sameGrid(view, grid)) {
+        if (view == null || grid == null || !isLoaded(view) || !sameGrid(view, grid)) {
             Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
             return;
         }
@@ -930,10 +933,9 @@ public final class Candidates {
             Net.CH.sendTo(new Net.Result(Net.Result.DENIED, rawName(view)), player);
             return;
         }
-        IInventory patternInv = term.getPatternTerminal()
-            .getInventoryByName(StorageName.CRAFTING_PATTERN.getName());
-        ItemStack pattern = patternInv == null ? null : patternInv.getStackInSlot(1);
-        if (pattern == null || !(pattern.getItem() instanceof ItemEncodedPattern)) {
+        IInventory patternInv = patternSlots(term);
+        ItemStack pattern = encodedPattern(term);
+        if (patternInv == null || pattern == null) {
             Net.CH.sendTo(new Net.Result(Net.Result.NO_PATTERN, rawName(view)), player);
             return;
         }
@@ -964,7 +966,7 @@ public final class Candidates {
         target.setInventorySlotContents(slot, one);
         target.markDirty();
         pattern.stackSize--;
-        patternInv.setInventorySlotContents(1, pattern.stackSize > 0 ? pattern : null);
+        patternInv.setInventorySlotContents(ENCODED_OUTPUT_SLOT, pattern.stackSize > 0 ? pattern : null);
         term.detectAndSendChanges();
         rememberChoice(player, session.key, view);
         Net.CH.sendTo(new Net.Result(cardAdded ? Net.Result.OK_CARD : Net.Result.OK, rawName(view)), player);
@@ -1008,13 +1010,27 @@ public final class Candidates {
             if (!takeFromPlayer(player, card) && !takeFromNetwork(grid, term, player, card)) {
                 return Net.Result.NO_CARD;
             }
-            upgrades.setInventorySlotContents(slot, card.copy());
-            upgrades.markDirty();
+            try {
+                upgrades.setInventorySlotContents(slot, card.copy());
+                upgrades.markDirty();
+            } catch (Throwable t) {
+                // Only if the card really did not land: the failure may come from a callback after it was placed.
+                if (upgrades.getStackInSlot(slot) == null) giveBack(player, card);
+                throw t;
+            }
             return CARD_ADDED;
         } catch (Throwable t) {
             PatternRouter.LOG.debug("Cannot add a capacity card to {}: {}", rawName(view), t.toString());
             return Net.Result.FULL;
         }
+    }
+
+    /** A card already taken but not installed: back to the player, dropped at their feet if the inventory is full. */
+    private static void giveBack(EntityPlayerMP player, ItemStack card) {
+        ItemStack back = card.copy();
+        player.inventory.addItemStackToInventory(back);
+        if (back.stackSize > 0) player.dropPlayerItemWithRandomChoice(back, false);
+        player.inventoryContainer.detectAndSendChanges();
     }
 
     private static boolean takeFromPlayer(EntityPlayerMP player, ItemStack card) {
@@ -1076,12 +1092,33 @@ public final class Candidates {
 
     // ------------------------------------------------------------------ helpers
 
-    private static ItemStack encodedPattern(ContainerPatternTerm term) {
+    /** Slot of the encoded pattern in the terminal's pattern inventory (0 holds the blank patterns). */
+    private static final int ENCODED_OUTPUT_SLOT = 1;
+
+    /** The terminal's blank/encoded pattern slots, or null if it has no encoded output slot. */
+    private static IInventory patternSlots(ContainerPatternTerm term) {
         IInventory inv = term.getPatternTerminal()
             .getInventoryByName(StorageName.CRAFTING_PATTERN.getName());
-        if (inv == null || inv.getSizeInventory() < 2) return null;
-        ItemStack s = inv.getStackInSlot(1);
+        return inv == null || inv.getSizeInventory() <= ENCODED_OUTPUT_SLOT ? null : inv;
+    }
+
+    private static ItemStack encodedPattern(ContainerPatternTerm term) {
+        IInventory inv = patternSlots(term);
+        if (inv == null) return null;
+        ItemStack s = inv.getStackInSlot(ENCODED_OUTPUT_SLOT);
         return s != null && s.getItem() instanceof ItemEncodedPattern ? s : null;
+    }
+
+    /**
+     * The provider's block is still there and loaded. A provider broken or unloaded after the list was sent must not
+     * get a pattern: it would be written into a dead tile entity and vanish.
+     */
+    private static boolean isLoaded(IInterfaceViewable view) {
+        TileEntity te = view.getTileEntity();
+        if (te == null || te.isInvalid()) return false;
+        World w = te.getWorldObj();
+        return w != null && w.blockExists(te.xCoord, te.yCoord, te.zCoord)
+            && w.getTileEntity(te.xCoord, te.yCoord, te.zCoord) == te;
     }
 
     /**
