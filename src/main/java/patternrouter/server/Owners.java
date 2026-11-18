@@ -26,9 +26,22 @@ final class Owners {
 
     private static final Field OWNER_FIELD = findField();
 
-    private static World scannedWorld;
-    private static long scannedTick = -1;
-    private static Map<Object, ChunkCoordinates> scanned = new IdentityHashMap<>();
+    /**
+     * Last scan of each world, valid for the tick it was made in. Per world, so providers in several dimensions
+     * don't make one request rescan the worlds in turn.
+     */
+    private static final Map<World, Scan> SCANS = new IdentityHashMap<>();
+
+    private static final class Scan {
+
+        final long tick;
+        final Map<Object, ChunkCoordinates> owners;
+
+        Scan(long tick, Map<Object, ChunkCoordinates> owners) {
+            this.tick = tick;
+            this.owners = owners;
+        }
+    }
 
     private Owners() {}
 
@@ -58,7 +71,8 @@ final class Owners {
 
     private static Map<Object, ChunkCoordinates> scan(World world) {
         long tick = world.getTotalWorldTime();
-        if (world == scannedWorld && tick == scannedTick) return scanned;
+        Scan last = SCANS.get(world);
+        if (last != null && last.tick == tick) return last.owners;
         Map<Object, ChunkCoordinates> map = new IdentityHashMap<>();
         for (Object o : new ArrayList<Object>(world.loadedTileEntityList)) {
             if (!(o instanceof IGregTechTileEntity)) continue;
@@ -71,10 +85,13 @@ final class Owners {
             addAll(map, multi.mInputHatches, c);
             addAll(map, multi.mDualInputHatches, c);
         }
-        scannedWorld = world;
-        scannedTick = tick;
-        scanned = map;
+        SCANS.put(world, new Scan(tick, map));
         return map;
+    }
+
+    /** A world unloads: forget its multiblocks. */
+    static void forget(World world) {
+        SCANS.remove(world);
     }
 
     private static void addAll(Map<Object, ChunkCoordinates> map, Collection<?> hatches, ChunkCoordinates c) {

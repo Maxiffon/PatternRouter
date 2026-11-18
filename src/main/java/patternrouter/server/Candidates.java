@@ -440,6 +440,7 @@ public final class Candidates {
         List<Scored> out = new ArrayList<>();
         CAN_MAKE.clear();
         SUBNETS.clear();
+        TARGETS.clear();
         Set<IInterfaceViewable> seen = new HashSet<>();
         // The terminal's network plus networks linked by Pattern Repeaters where the player may build.
         List<IGrid> grids = new ArrayList<>();
@@ -540,7 +541,7 @@ public final class Candidates {
             return s;
         }
         Collection<RecipeMap<?>> maps = machineRecipeMaps(view);
-        if (wanted != null && !maps.contains(wanted)) {
+        if (wanted != null && !maps.contains(wanted) && PatternRouter.LOG.isDebugEnabled()) {
             PatternRouter.LOG.debug(
                 "  {} ({}): machine {}, maps {}, wanted {}",
                 s.name,
@@ -1551,6 +1552,18 @@ public final class Candidates {
      * subnet), the GT machine inputs that subnet feeds.
      */
     private static List<TileEntity> targets(IInterfaceViewable view) {
+        List<TileEntity> known = TARGETS.get(view);
+        if (known == null) {
+            known = findTargets(view);
+            TARGETS.put(view, known);
+        }
+        return known;
+    }
+
+    /** Per request: targets() of each provider (asked for by several checks). */
+    private static final Map<IInterfaceViewable, List<TileEntity>> TARGETS = new java.util.IdentityHashMap<>();
+
+    private static List<TileEntity> findTargets(IInterfaceViewable view) {
         TileEntity self = view.getTileEntity();
         if (!(view instanceof IInterfaceHost) || self == null) return new ArrayList<>();
         EnumSet<ForgeDirection> dirs = ((IInterfaceHost) view).getTargets();
