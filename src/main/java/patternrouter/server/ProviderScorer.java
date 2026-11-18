@@ -89,7 +89,7 @@ final class ProviderScorer {
             }
         }
         scoreAssemblyLineResearch(s, modes, wanted, contents);
-        scoreLimits(s, modes, wanted, contents, machine);
+        scoreLimits(s, modes, contents, machine);
         return s;
     }
 
@@ -98,7 +98,7 @@ final class ProviderScorer {
      * machine's discount counted), too little coil heat, too low a glass or casing tier, ... as the machine itself
      * checks before starting a recipe.
      */
-    private static void scoreLimits(ProviderScore s, MachineModes modes, RecipeMap<?> wanted, PatternContents contents,
+    private static void scoreLimits(ProviderScore s, MachineModes modes, PatternContents contents,
         MachineInventory machine) {
         if (!s.has(ProviderEntry.RECIPE_MATCH) || s.has(ProviderEntry.SETUP_CONFLICTS) || contents.isEmpty()) return;
         // The map the pattern was matched in: the NEI tab, or the one GT's lookup fitted. Never just the first map
@@ -131,14 +131,13 @@ final class ProviderScorer {
         // Another mode decided already (its reason says which); a recipe matched for another machine behind the
         // same provider is not the assembly line's business.
         if (s.has(ProviderEntry.OTHER_MODE)) return;
-        if (s.matchedMap != null && s.matchedMap != assemblyLine) return;
+        // Only a machine that actually fits it in another map wins over the line; a mere conflict elsewhere doesn't.
+        if (s.matchedMap != null && s.matchedMap != assemblyLine && s.has(ProviderEntry.SETUP_FITS)) return;
         Boolean researched = AssemblyLineData.researched(modes.machines, contents.outputItem());
         if (researched == null) {
             // Sticks unreadable: GT's lookup "conflict" says nothing about an assembly line (lines share
             // components), so don't claim a wrong circuit; the recipe kind matches.
-            if (s.has(ProviderEntry.SETUP_CONFLICTS) && !s.has(ProviderEntry.OTHER_MODE)) {
-                s.flags &= ~ProviderEntry.SETUP_CONFLICTS;
-            }
+            s.flags &= ~ProviderEntry.SETUP_CONFLICTS;
             return;
         }
         // No NEI tab: an unresearched line still counts when GT's lookup found the pattern among assembly line

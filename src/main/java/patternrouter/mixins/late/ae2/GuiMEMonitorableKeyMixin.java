@@ -21,6 +21,17 @@ public abstract class GuiMEMonitorableKeyMixin {
     private void patternrouter$keyboard(CallbackInfo ci) {
         ClientPanel panel = ClientPanel.INSTANCE;
         if (panel == null || !panel.wantsKeys(this)) return;
+        // Function keys (screenshot, fullscreen, ...) and modifiers (AE2 pauses its list while Shift is held) type
+        // nothing: let the terminal and Minecraft have them.
+        int key = Keyboard.getEventKey();
+        if (key >= Keyboard.KEY_F1 && key <= Keyboard.KEY_F10 || key == Keyboard.KEY_F11
+            || key == Keyboard.KEY_F12
+            || key == Keyboard.KEY_LSHIFT
+            || key == Keyboard.KEY_RSHIFT
+            || key == Keyboard.KEY_LCONTROL
+            || key == Keyboard.KEY_RCONTROL
+            || key == Keyboard.KEY_LMENU
+            || key == Keyboard.KEY_RMENU) return;
         // Presses go to the panel; releases are eaten too, so nothing below acts on half a key stroke.
         if (Keyboard.getEventKeyState()) panel.onKey(this, Keyboard.getEventCharacter(), Keyboard.getEventKey());
         ci.cancel();

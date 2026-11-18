@@ -77,3 +77,6 @@ patternrouter.dupes.yes=Yes
 patternrouter.dupes.no=No
 patternrouter.result.dupes=Put into %s, duplicates removed: %s
 patternrouter.why.unreadable=The machine won't run it (the server's reason needs a newer GregTech on this client)
+patternrouter.status.busy=Removing duplicates, wait a moment…
+patternrouter.result.dupes.skipped=(%s couldn't be taken: changed or out of reach)
+patternrouter.result.dupes.timeout=The server didn't answer; removing duplicates stopped. Check the list.

@@ -77,3 +77,6 @@ patternrouter.dupes.yes=是
 patternrouter.dupes.no=否
 patternrouter.result.dupes=已放入 %s，移除重复：%s
 patternrouter.why.unreadable=机器无法运行此配方（客户端无法读取服务器给出的原因：GregTech 版本不同）
+patternrouter.status.busy=正在移除重复样板，请稍候…
+patternrouter.result.dupes.skipped=（%s 个无法取出：已变更或无法访问）
+patternrouter.result.dupes.timeout=服务器无响应，已停止移除重复样板。请检查列表。

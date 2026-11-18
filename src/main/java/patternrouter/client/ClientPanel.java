@@ -122,6 +122,10 @@ public class ClientPanel {
     private int dupesExpected, dupesDone, dupesSent, dupeToken;
     /** "Yes" was answered: the duplicates wait for the upload's OK. */
     private boolean awaitingUpload;
+    private int dupesSkipped;
+    /** No reply by then: the server dropped the action; the "yes" run ends. */
+    private long chainDeadline;
+    private static final long CHAIN_TIMEOUT_MS = 5000;
     private String uploadedTo = "";
     /** The current click closed the question; cleared next frame. */
     private boolean clickClosedDialog;
@@ -200,20 +204,20 @@ public class ClientPanel {
             if (search != null) search.setText("");
             dialogFor = null;
             awaitingUpload = false;
-            dupesExpected = dupesDone = dupesSent = 0;
+            dupesExpected = dupesDone = dupesSent = dupesSkipped = 0;
         }
         if (search != null) search.updateCursorCounter();
+    }
+
+    /** The panel takes the keyboard: its search field has focus or the duplicates question is open. */
+    public boolean wantsKeys(Object screen) {
+        return screen == gui && gui != null && (dialogFor != null || search != null && search.isFocused());
     }
 
     /**
      * A key in the terminal (from the AE2 GUI mixin): typed into the search field while it has focus, and eaten so AE2,
      * NEI and the inventory key don't act on it. Esc and Enter only leave the field.
      */
-    /** The panel takes the keyboard: its search field has focus or the duplicates question is open. */
-    public boolean wantsKeys(Object screen) {
-        return screen == gui && gui != null && (dialogFor != null || search != null && search.isFocused());
-    }
-
     public boolean onKey(Object screen, char typed, int key) {
         if (screen == gui && gui != null && dialogFor != null) {
             // The duplicates question: Enter = yes, Esc = cancel (nothing uploaded), other keys do nothing.
@@ -323,6 +327,10 @@ public class ClientPanel {
         if (pattern != null) currentPattern = pattern;
         visible = pattern != null || System.currentTimeMillis() < statusUntil;
         clickClosedDialog = false;
+        if (chainActive() && System.currentTimeMillis() > chainDeadline) {
+            endDupes();
+            setStatus(I18n.format("patternrouter.result.dupes.timeout"), 0xB00000, 6000);
+        }
         if (dragging) drag(e.mouseX, e.mouseY);
         if (resizing) resize(e.mouseY);
         if (barDragging) {
@@ -476,6 +484,11 @@ public class ClientPanel {
         if (id < BASE_ID || id > BASE_ID + 200) return;
         e.setCanceled(true);
         if (clickClosedDialog) return; // the click that closed the question presses nothing else
+        if (chainActive()) {
+            // Duplicates are being taken out: other actions would mix their replies into it.
+            setStatus(I18n.format("patternrouter.status.busy"), GUI_TEXT_DIM, 2000);
+            return;
+        }
         if (dialogFor != null) {
             // While the duplicates question is open only its buttons work.
             if (e.button == dialogYes) answerDialog(true);
@@ -537,12 +550,23 @@ public class ClientPanel {
         dupesExpected = conflicts.size();
         dupesDone = 0;
         dupesSent = 0;
+        dupesSkipped = 0;
         awaitingUpload = true;
+        chainDeadline = System.currentTimeMillis() + CHAIN_TIMEOUT_MS;
+    }
+
+    /**
+     * "Yes" is being carried out. Meanwhile the panel takes no other action, so every reply belongs to it; a reply
+     * that never comes (the server drops actions when its queue is full) ends it after a timeout.
+     */
+    private boolean chainActive() {
+        return awaitingUpload || dupesExpected > 0;
     }
 
     /** The next duplicate of the "yes" answer, or the end of it. */
     private void sendNextDupe() {
         if (dupesSent < dupesExpected) {
+            chainDeadline = System.currentTimeMillis() + CHAIN_TIMEOUT_MS;
             PatternRouterNetwork.channel.sendToServer(new ExtractConflictMessage(dupeToken, dupesSent++));
         } else {
             endDupes();
@@ -552,8 +576,14 @@ public class ClientPanel {
     private void endDupes() {
         boolean wasRunning = dupesExpected > 0;
         awaitingUpload = false;
-        dupesExpected = dupesDone = dupesSent = 0;
+        dupesExpected = dupesDone = dupesSent = dupesSkipped = 0;
         if (wasRunning) lastKey = null; // refresh the list once at the end
+    }
+
+    private void dupesStatus() {
+        String s = I18n.format("patternrouter.result.dupes", uploadedTo, dupesDone);
+        if (dupesSkipped > 0) s += " " + I18n.format("patternrouter.result.dupes.skipped", dupesSkipped);
+        setStatus(s, dupesSkipped > 0 ? 0x8A5A00 : 0x1E7A1E, 6000);
     }
 
     /** Highlight the provider in the world with AE2's own highlighter (as its interface terminal does). */
@@ -624,13 +654,15 @@ public class ClientPanel {
             if (uploaded) sendNextDupe();
             else endDupes();
         } else if (dupesExpected > 0) {
-            if (msg.code == ActionResultMessage.EXTRACTED) {
-                dupesDone++;
-                setStatus(I18n.format("patternrouter.result.dupes", uploadedTo, dupesDone), good, 5000);
+            if (msg.code != ActionResultMessage.INVENTORY_FULL) {
+                // Taken, or this one changed / is out of reach: count it and go on with the others.
+                if (msg.code == ActionResultMessage.EXTRACTED) dupesDone++;
+                else dupesSkipped++;
+                dupesStatus();
                 sendNextDupe();
                 return;
             }
-            endDupes(); // a duplicate couldn't be taken (inventory full, changed): stop, say why below
+            endDupes(); // inventory full: the rest wouldn't fit either; say so below
         }
         switch (msg.code) {
             case ActionResultMessage.OK:

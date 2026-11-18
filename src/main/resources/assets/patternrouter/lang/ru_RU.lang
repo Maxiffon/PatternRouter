@@ -77,3 +77,6 @@ patternrouter.dupes.yes=Да
 patternrouter.dupes.no=Нет
 patternrouter.result.dupes=Положил в %s, убрано дубликатов: %s
 patternrouter.why.unreadable=Машина не запустит рецепт (причину с сервера этот клиент прочитать не смог: другая версия GregTech)
+patternrouter.status.busy=Убираю дубликаты, секунду…
+patternrouter.result.dupes.skipped=(не удалось: %s — изменились или недоступны)
+patternrouter.result.dupes.timeout=Сервер не ответил, удаление дубликатов остановлено. Проверь список.

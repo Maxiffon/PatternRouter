@@ -43,13 +43,7 @@ final class EntryText {
                     .getSampleFromRegistry(id);
                 gregtech.api.recipe.check.CheckRecipeResult result = sample.newInstance();
                 String data = bar < 0 ? "" : r.substring(bar + 1);
-                if (!data.isEmpty()) {
-                    byte[] bytes = java.util.Base64.getDecoder()
-                        .decode(data);
-                    NBTTagCompound nbt = net.minecraft.nbt.CompressedStreamTools
-                        .read(new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes)));
-                    result.readFromNBT(nbt);
-                }
+                if (!data.isEmpty()) result.readFromNBT(decodeNbt(data));
                 e.reasonText = result.getDisplayString();
                 e.reasonFlag = id.contains("heat") ? "patternrouter.flag.heat"
                     : id.contains("power") || id.contains("voltage") ? "patternrouter.flag.power"
@@ -71,6 +65,17 @@ final class EntryText {
                         // research this way.
                         : e.reasonsSent ? "patternrouter.why.othermold" : "patternrouter.why.oldserver");
         }
+    }
+
+    /** Binary NBT in Base64; servers from cleanup.29 to .31 sent its text form, read that too. */
+    private static NBTTagCompound decodeNbt(String data) throws Exception {
+        if (data.startsWith("{")) {
+            return (NBTTagCompound) net.minecraft.nbt.JsonToNBT.func_150315_a(data);
+        }
+        byte[] bytes = java.util.Base64.getDecoder()
+            .decode(data);
+        return net.minecraft.nbt.CompressedStreamTools
+            .read(new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes)));
     }
 
     /** Server reason key: the short flag shown in the row. */

@@ -143,7 +143,10 @@ public final class MachineLimits {
 
     /** Heat field per machine class, found once ({@link #NO_FIELD} if it has none). */
     private static final java.util.Map<Class<?>, Field> HEAT_FIELDS = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final Field NO_FIELD = field(ProcessingLogic.class, "availableVoltage");
+    private static final Field NO_FIELD = field(MachineLimits.class, "noHeatField");
+    /** Sentinel for {@link #NO_FIELD}: a field of our own, so the cache never depends on GT's names. */
+    @SuppressWarnings("unused")
+    private static int noHeatField;
 
     private static Field findHeatField(Class<?> type) {
         for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
@@ -151,8 +154,8 @@ public final class MachineLimits {
                 String n = f.getName()
                     .toLowerCase();
                 if (!n.contains("heatingcapacity") && !n.equals("mheat") && !n.equals("heat")) continue;
-                if (!f.getType()
-                    .isPrimitive()) continue;
+                Class<?> t = f.getType();
+                if (t != int.class && t != long.class && t != short.class) continue; // a number, not a flag
                 try {
                     f.setAccessible(true);
                     return f;
