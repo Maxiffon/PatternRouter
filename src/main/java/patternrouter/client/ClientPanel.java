@@ -1002,7 +1002,7 @@ public class ClientPanel {
     }
 
     private void drawTooltip(List<String> lines, int x, int y) {
-        AeStyle.drawTooltip(lines, x, y, gui.width);
+        AeStyle.drawTooltip(lines, x, y, gui.width, gui.height);
     }
 
     /** Panel window, title, note, conflict header, status line. Drawn first. */

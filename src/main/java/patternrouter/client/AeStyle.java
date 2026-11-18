@@ -119,12 +119,29 @@ final class AeStyle {
     }
 
     /** Vanilla-looking tooltip next to the mouse, flipped left if it would leave a screen this wide. */
-    static void drawTooltip(List<String> lines, int x, int y, int screenWidth) {
+    static void drawTooltip(List<String> rawLines, int x, int y, int screenWidth, int screenHeight) {
         FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
+        // Long lines (a CRIB's name with all its circuits) wrap, so the tooltip never runs off the screen.
+        int maxW = Math.max(80, Math.min(260, screenWidth - 16));
+        List<String> lines = new java.util.ArrayList<>();
+        for (String l : rawLines) {
+            if (fr.getStringWidth(l) <= maxW) lines.add(l);
+            else {
+                // Wrapped parts keep the line's colour.
+                String color = net.minecraft.util.EnumChatFormatting.WHITE.toString();
+                for (String part : fr.listFormattedStringToWidth(l, maxW)) {
+                    String fmt = net.minecraft.client.gui.FontRenderer.getFormatFromString(part);
+                    lines.add(part.startsWith("§") ? part : color + part);
+                    if (!fmt.isEmpty()) color = fmt;
+                }
+            }
+        }
         int w = 0;
         for (String l : lines) w = Math.max(w, fr.getStringWidth(l));
         int tx = x + 12, ty = y - 12, h = lines.size() * LINE_HEIGHT + 2;
         if (tx + w + 6 > screenWidth) tx = x - w - 16;
+        tx = Math.max(4, Math.min(tx, screenWidth - w - 4));
+        ty = Math.max(4, Math.min(ty, screenHeight - h - 4));
         GL11.glDisable(GL11.GL_DEPTH_TEST);
         Gui.drawRect(tx - 3, ty - 3, tx + w + 3, ty + h, TOOLTIP_FILL);
         Gui.drawRect(tx - 3, ty - 3, tx + w + 3, ty - 2, TOOLTIP_TOP);
