@@ -10,6 +10,7 @@ public final class Config {
     private static final String CATEGORY = "client";
     private static final String SIDE_COMMENT = "Pattern terminal side panel position: right (NEI items hide under it) or left. Can also be switched with the arrow in the panel title.";
     private static final String CUSTOM_COMMENT = "true after the panel was dragged by its title: panelX/panelY are then used instead of panelSide.";
+    private static final String HIDE_FULL_COMMENT = "Hide interfaces without a free pattern slot. Can also be switched with the button in the panel title.";
     private static final String POS_COMMENT = "Panel position relative to the top-left corner of the terminal window (set by dragging the title).";
 
     /** Panel side: right of the terminal (NEI makes room) or left. */
@@ -18,6 +19,8 @@ public final class Config {
     public static boolean panelCustom;
     /** Dragged position, relative to the terminal's guiLeft/guiTop. */
     public static int panelX, panelY;
+    /** Hide providers without a free pattern slot (toggle in the panel title). */
+    public static boolean hideFull;
 
     private static Configuration config;
 
@@ -29,7 +32,16 @@ public final class Config {
         panelCustom = config.getBoolean("panelCustom", CATEGORY, false, CUSTOM_COMMENT);
         panelX = config.getInt("panelX", CATEGORY, 0, -4096, 4096, POS_COMMENT);
         panelY = config.getInt("panelY", CATEGORY, 0, -4096, 4096, POS_COMMENT);
+        hideFull = config.getBoolean("hideFull", CATEGORY, false, HIDE_FULL_COMMENT);
         if (config.hasChanged()) config.save();
+    }
+
+    public static void setHideFull(boolean hide) {
+        hideFull = hide;
+        if (config == null) return;
+        config.get(CATEGORY, "hideFull", false, HIDE_FULL_COMMENT)
+            .set(hide);
+        config.save();
     }
 
     /** Side arrow: back to automatic placement on that side. */

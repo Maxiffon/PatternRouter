@@ -42,3 +42,6 @@ patternrouter.flag.nofluid=doesn't take fluids
 patternrouter.flag.byname=by name
 patternrouter.flag.othermode=other mode
 patternrouter.conflict.title.short=⚠ Already exists: %s
+patternrouter.tip.hidefull.off=Hide full interfaces (all capacity cards in)
+patternrouter.tip.hidefull.on=Show full interfaces again
+patternrouter.note.allfull=Every fitting interface is full: press ■ in the title to see them.

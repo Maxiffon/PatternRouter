@@ -17,6 +17,8 @@ final class ProviderScore {
     /** AE2's caption (CRIBs), as chat JSON; empty if none. */
     String suffix;
     int freeSlots;
+    /** No free slot, but a capacity card still fits. */
+    boolean takesCard;
     /** ProviderEntry flags. */
     int flags;
     int dim, x, y, z;
@@ -43,6 +45,7 @@ final class ProviderScore {
         e.name = name;
         e.suffix = suffix;
         e.freeSlots = freeSlots;
+        e.takesCard = takesCard;
         e.flags = flags;
         e.dim = dim;
         e.x = x;

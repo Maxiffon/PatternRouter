@@ -60,6 +60,24 @@ final class CapacityCards {
         }
     }
 
+    /** A full AE2 interface that still takes a capacity card (fewer than the maximum installed). */
+    static boolean canTakeCard(IInterfaceViewable view) {
+        if (!(view instanceof IInterfaceHost host)) return false;
+        try {
+            IInventory upgrades = host.getInterfaceDuality()
+                .getInventoryByName("upgrades");
+            ItemStack card = AEApi.instance()
+                .definitions()
+                .materials()
+                .cardPatternCapacity()
+                .maybeStack(1)
+                .orNull();
+            return upgrades != null && card != null && freeUpgradeSlot(upgrades, card) >= 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** AE2's upgrade inventory refuses cards beyond the per-type maximum: -1 then. */
     private static int freeUpgradeSlot(IInventory upgrades, ItemStack card) {
         for (int i = 0; i < upgrades.getSizeInventory(); i++) {

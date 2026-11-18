@@ -30,6 +30,11 @@ public class ProviderEntry {
     /** AE2's caption (CRIBs) as chat JSON; the client turns it into text. */
     public String suffix = "";
     public int freeSlots;
+    /**
+     * No free slot, but a capacity card still fits. Not part of the entry bytes: {@link CandidateListMessage} sends it
+     * after the list, where clients before 1.4 don't read.
+     */
+    public boolean takesCard;
     public int flags;
     /** Provider position, for highlighting it in the world. */
     public int dim, x, y, z;

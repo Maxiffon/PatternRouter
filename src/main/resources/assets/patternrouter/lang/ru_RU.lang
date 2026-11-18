@@ -42,3 +42,6 @@ patternrouter.flag.nofluid=не принимает жидкость
 patternrouter.flag.byname=по названию
 patternrouter.flag.othermode=другой режим
 patternrouter.conflict.title.short=⚠ Уже есть: %s
+patternrouter.tip.hidefull.off=Скрыть полные интерфейсы (все карты ёмкости уже стоят)
+patternrouter.tip.hidefull.on=Снова показывать полные интерфейсы
+patternrouter.note.allfull=Все подходящие интерфейсы полные: нажмите ■ в заголовке, чтобы их показать.

@@ -73,6 +73,8 @@ public class ClientPanel {
     private static final int CONF_ROWS = 3;
     private static final int HEADER = 22;
     private static final int FOOTER = 22;
+    /** Title-bar room on the right: the "hide full" toggle and the side arrow. */
+    private static final int TITLE_BUTTONS = 40;
     /** Current footer height (the status line may wrap). */
     private int footer = FOOTER;
 
@@ -95,6 +97,8 @@ public class ClientPanel {
     private GuiButton up, down;
     /** Title-bar arrow that moves the panel to the other side of the terminal. */
     private GuiButton side;
+    /** Title-bar toggle: hide providers without a free slot. */
+    private GuiButton hideFull;
     /** Where layoutHorizontal() actually put the panel. */
     private boolean onRight = true;
     /** Dragging the panel by its title: mouse offset from the panel corner. */
@@ -114,6 +118,9 @@ public class ClientPanel {
     /** When the last list request went out (ms), 0 = none outstanding. */
     private long requestSentAt;
     private int token;
+    /** The list as the server sent it; uploads refer to its indexes. */
+    private List<ProviderEntry> received = Collections.emptyList();
+    /** What the panel shows: {@link #received}, without full providers when they are hidden. */
     private List<ProviderEntry> entries = Collections.emptyList();
     private List<ProviderEntry> conflicts = Collections.emptyList();
     private int note = -1;
@@ -173,6 +180,8 @@ public class ClientPanel {
         e.buttonList.add(down);
         side = new PanelButton(BASE_ID + 102, 14, 14, "");
         e.buttonList.add(side);
+        hideFull = new PanelButton(BASE_ID + 103, 14, 14, "");
+        e.buttonList.add(hideFull);
         relayout();
     }
 
@@ -189,7 +198,7 @@ public class ClientPanel {
                 boolean fresh = lastKey == null;
                 lastKey = key;
                 sendAt = fresh ? now : now + DEBOUNCE_MS;
-                entries = Collections.emptyList();
+                entries = received = Collections.emptyList();
                 conflicts = Collections.emptyList();
                 note = -1;
                 waiting = true;
@@ -265,6 +274,13 @@ public class ClientPanel {
                 e.mouseX,
                 e.mouseY);
         }
+        if (hideFull != null && hideFull.visible && AeStyle.isOver(hideFull, e.mouseX, e.mouseY)) {
+            drawTooltip(
+                Collections.singletonList(
+                    I18n.format(Config.hideFull ? "patternrouter.tip.hidefull.on" : "patternrouter.tip.hidefull.off")),
+                e.mouseX,
+                e.mouseY);
+        }
     }
 
     @SubscribeEvent
@@ -279,6 +295,10 @@ public class ClientPanel {
             Config.setPanelSide(onRight ? "left" : "right");
             layoutHorizontal();
             relayout();
+        } else if (e.button == hideFull) {
+            Config.setHideFull(!Config.hideFull);
+            applyFilter();
+            scroll = 0;
         } else if (e.button instanceof ConflictRow) {
             int i = ((ConflictRow) e.button).slot;
             if (i < conflicts.size()) highlight(conflicts.get(i));
@@ -288,8 +308,9 @@ public class ClientPanel {
         } else if (e.button instanceof RowButton) {
             int index = scroll + ((RowButton) e.button).slot;
             if (index < entries.size()) {
-                lastActionName = displayName(entries.get(index));
-                PatternRouterNetwork.channel.sendToServer(new UploadPatternMessage(token, index));
+                ProviderEntry picked = entries.get(index);
+                lastActionName = displayName(picked);
+                PatternRouterNetwork.channel.sendToServer(new UploadPatternMessage(token, received.indexOf(picked)));
                 setStatus(I18n.format("patternrouter.status.uploading"), GUI_TEXT_DIM, 3000);
             }
         } else {
@@ -325,12 +346,23 @@ public class ClientPanel {
         for (ProviderEntry e : msg.entries) EntryText.localize(e);
         for (ProviderEntry e : msg.conflicts) EntryText.localize(e);
         token = msg.token;
-        entries = msg.entries;
+        received = msg.entries;
+        applyFilter();
         conflicts = msg.conflicts;
         note = msg.note;
         scroll = 0;
         waiting = false;
         requestSentAt = 0;
+    }
+
+    private void applyFilter() {
+        if (!Config.hideFull) {
+            entries = received;
+            return;
+        }
+        entries = new ArrayList<>();
+        // Full means all capacity cards in as well: a click on a full interface adds a card first.
+        for (ProviderEntry e : received) if (e.freeSlots > 0 || e.takesCard) entries.add(e);
     }
 
     public void onResult(ActionResultMessage msg) {
@@ -511,6 +543,10 @@ public class ClientPanel {
         side.yPosition = py + 4;
         side.displayString = onRight ? "◀" : "▶";
         side.visible = visible;
+        hideFull.xPosition = side.xPosition - 2 - hideFull.width;
+        hideFull.yPosition = side.yPosition;
+        hideFull.displayString = Config.hideFull ? "■" : "□";
+        hideFull.visible = visible;
         // NEI hides its item slots under every button of the GUI and ignores GuiButton.visible: park the hidden
         // ones off screen, or NEI keeps a hole where the panel was.
         park(bg);
@@ -520,6 +556,7 @@ public class ClientPanel {
         park(up);
         park(down);
         park(side);
+        park(hideFull);
         // Refresh NEI's slot mask right away when the panel appears, disappears, moves or resizes.
         long key = visible ? (((long) px & 0xFFFF) << 48) | (((long) py & 0xFFFF) << 32) | ((long) pw << 16) | ph : -1;
         if (NEI && key != neiLayoutKey && !dragging) {
@@ -598,7 +635,7 @@ public class ClientPanel {
                 ctx ? RecipeContext.nonConsumables : Collections.emptyList(),
                 ctx ? RecipeContext.machineName : ""));
         requestSentAt = System.currentTimeMillis();
-        entries = Collections.emptyList();
+        entries = received = Collections.emptyList();
         conflicts = Collections.emptyList();
         note = -1;
         waiting = true;
@@ -608,7 +645,7 @@ public class ClientPanel {
         // Ask again for the same pattern next time; otherwise a reopened terminal showed an empty panel.
         lastKey = null;
         sendAt = -1;
-        entries = Collections.emptyList();
+        entries = received = Collections.emptyList();
         conflicts = Collections.emptyList();
         note = -1;
         waiting = false;
@@ -627,9 +664,9 @@ public class ClientPanel {
             return I18n.format("patternrouter.note.noreply");
         }
         if (waiting) return I18n.format("patternrouter.note.waiting");
-        ListNote received = ListNote.fromWire(note);
-        if (received == null) return "";
-        switch (received) {
+        ListNote listNote = ListNote.fromWire(note);
+        if (listNote == null) return "";
+        switch (listNote) {
             case NO_PATTERN:
                 return I18n.format("patternrouter.note.nopattern");
             case NO_GRID:
@@ -645,7 +682,9 @@ public class ClientPanel {
             case NO_ASSEMBLER:
                 return I18n.format("patternrouter.note.noassembler");
             default:
-                return entries.isEmpty() ? I18n.format("patternrouter.note.empty") : "";
+                if (!entries.isEmpty()) return "";
+                return received.isEmpty() ? I18n.format("patternrouter.note.empty")
+                    : I18n.format("patternrouter.note.allfull");
         }
     }
 
@@ -677,7 +716,7 @@ public class ClientPanel {
             String page = entries.size() > rowsCap
                 ? (scroll + 1) + "-" + Math.min(scroll + rowsCap, entries.size()) + "/" + entries.size()
                 : "";
-            int titleRoom = xPosition + width - 24 - (page.isEmpty() ? 0 : fr.getStringWidth(page) + 4) - tx;
+            int titleRoom = xPosition + width - TITLE_BUTTONS - (page.isEmpty() ? 0 : fr.getStringWidth(page) + 4) - tx;
             fr.drawString(
                 fr.trimStringToWidth(I18n.format("patternrouter.title"), titleRoom),
                 tx,
@@ -685,7 +724,11 @@ public class ClientPanel {
                 GUI_TEXT);
             if (!page.isEmpty()) {
                 // Left of the side arrow in the title bar.
-                fr.drawString(page, xPosition + width - 24 - fr.getStringWidth(page), yPosition + 7, GUI_TEXT_DIM);
+                fr.drawString(
+                    page,
+                    xPosition + width - TITLE_BUTTONS - fr.getStringWidth(page),
+                    yPosition + 7,
+                    GUI_TEXT_DIM);
             }
             int shown = Math.min(entries.size(), rowsCap);
             if (shown > 0) drawInset(xPosition + 4, listY - 1, width - 8, shown * ROW_H + 1);
@@ -723,7 +766,8 @@ public class ClientPanel {
                 && mx < xPosition + width
                 && my >= yPosition
                 && my < yPosition + HEADER;
-            boolean onArrow = side != null && AeStyle.isOver(side, mx, my);
+            boolean onArrow = side != null && AeStyle.isOver(side, mx, my)
+                || hideFull != null && AeStyle.isOver(hideFull, mx, my);
             if (inTitle && !onArrow) {
                 dragging = true;
                 dragDX = mx - px;

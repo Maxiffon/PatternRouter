@@ -29,6 +29,14 @@ public class CandidateListMessage implements IMessage {
         note = buf.readUnsignedByte();
         readEntries(buf, entries);
         readEntries(buf, conflicts);
+        // Added in 1.4 after everything older clients read; an older server sends nothing here.
+        if (buf.isReadable()) {
+            int n = buf.readUnsignedByte();
+            for (int i = 0; i < n && buf.isReadable(); i++) {
+                boolean takesCard = buf.readBoolean();
+                if (i < entries.size()) entries.get(i).takesCard = takesCard;
+            }
+        }
     }
 
     @Override
@@ -37,6 +45,9 @@ public class CandidateListMessage implements IMessage {
         buf.writeByte(note);
         writeEntries(buf, entries);
         writeEntries(buf, conflicts);
+        int n = Math.min(entries.size(), MAX_ROWS);
+        buf.writeByte(n);
+        for (int i = 0; i < n; i++) buf.writeBoolean(entries.get(i).takesCard);
     }
 
     private static void readEntries(ByteBuf buf, List<ProviderEntry> list) {

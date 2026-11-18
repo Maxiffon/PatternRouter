@@ -139,6 +139,8 @@ final class ProviderScorer {
                     s.sameOutputSlots.add(i);
                 }
         }
+        // A click on a full AE2 interface adds a capacity card first: it is full only with all cards in.
+        if (s.freeSlots == 0) s.takesCard = CapacityCards.canTakeCard(view);
     }
 
     private static void scoreForCategory(ProviderScore s, Collection<RecipeMap<?>> maps, RecipeMap<?> wanted,

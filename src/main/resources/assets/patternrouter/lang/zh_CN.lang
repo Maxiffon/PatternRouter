@@ -42,3 +42,6 @@ patternrouter.result.maxcards=%s 已满，样板容量卡已达上限
 patternrouter.flag.byname=按名称
 patternrouter.flag.othermode=其他模式
 patternrouter.conflict.title.short=⚠ 已存在：%s
+patternrouter.tip.hidefull.off=隐藏已满的接口（扩容卡已装满）
+patternrouter.tip.hidefull.on=重新显示已满的接口
+patternrouter.note.allfull=所有适用的接口都已满：点击标题中的 ■ 以显示。
