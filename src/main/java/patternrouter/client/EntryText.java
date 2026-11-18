@@ -69,6 +69,11 @@ final class EntryText {
         SHORT.put("patternrouter.why.heat", "patternrouter.flag.heat");
         SHORT.put("patternrouter.why.research", "patternrouter.flag.research");
         SHORT.put("patternrouter.why.othermode", "patternrouter.flag.othermode");
+        SHORT.put("patternrouter.why.cleanroom", "patternrouter.flag.cleanroom");
+        SHORT.put("patternrouter.why.cleanroom.broken", "patternrouter.flag.cleanroom");
+        SHORT.put("patternrouter.why.cleanroom.dirty", "patternrouter.flag.cleanroom");
+        SHORT.put("patternrouter.why.lowgravity", "patternrouter.flag.lowgravity");
+        SHORT.put("patternrouter.why.compression", "patternrouter.flag.compression");
     }
 
     static String displayName(ProviderEntry e) {

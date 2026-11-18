@@ -22,6 +22,9 @@ final class PanelButton extends GuiButton {
     private static final int TEXT_DISABLED = 0x7A7A7A;
     private static final int FONT_HEIGHT = 8;
 
+    /** Drawn this far forward: above item icons when it sits on a box over the list. */
+    float z;
+
     PanelButton(int id, int w, int h, String text) {
         super(id, 0, 0, w, h, text);
     }
@@ -29,6 +32,15 @@ final class PanelButton extends GuiButton {
     @Override
     public void drawButton(Minecraft mc, int mx, int my) {
         if (!visible) return;
+        if (z != 0) org.lwjgl.opengl.GL11.glTranslatef(0, 0, z);
+        try {
+            draw(mc, mx, my);
+        } finally {
+            if (z != 0) org.lwjgl.opengl.GL11.glTranslatef(0, 0, -z);
+        }
+    }
+
+    private void draw(Minecraft mc, int mx, int my) {
         boolean hover = AeStyle.isOver(this, mx, my);
         field_146123_n = hover;
         boolean pressed = hover && enabled && Mouse.isButtonDown(0);

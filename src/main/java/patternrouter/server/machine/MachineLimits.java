@@ -74,7 +74,8 @@ public final class MachineLimits {
             if (mte instanceof MTEBasicMachine basic) {
                 // A single block runs recipes up to its own voltage.
                 long have = GTValues.V[Math.min(basic.mTier, GTValues.V.length - 1)];
-                return eut > have ? Reason.power(eut, have, 1) : null;
+                if (eut > have) return Reason.power(eut, have, 1);
+                return recipe == null ? null : SingleBlockConditions.check(basic, recipe);
             }
             if (!(mte instanceof MTEMultiBlockBase multi)) return null;
             ProcessingLogic logic = logicOf(multi);

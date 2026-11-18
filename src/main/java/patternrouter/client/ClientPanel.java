@@ -114,6 +114,15 @@ public class ClientPanel {
     private final List<ConflictRow> confRows = new ArrayList<>();
     private final List<GuiButton> extractButtons = new ArrayList<>();
     private ScrollBar bar;
+    /** "Remove the duplicates?" over the list: the row clicked, null when closed. */
+    private ProviderEntry dialogFor;
+    private DialogBox dialog;
+    private GuiButton dialogYes, dialogNo;
+    /** After "yes": duplicates asked to be taken out, and taken out so far. */
+    private int dupesExpected, dupesDone;
+    private String uploadedTo = "";
+    /** The current click closed the question; cleared next frame. */
+    private boolean clickClosedDialog;
     /** Search field under the title: filters the list by name. */
     private GuiTextField search;
     private String query = "";
@@ -196,6 +205,12 @@ public class ClientPanel {
      * NEI and the inventory key don't act on it. Esc and Enter only leave the field.
      */
     public boolean onKey(Object screen, char typed, int key) {
+        if (screen == gui && gui != null && dialogFor != null) {
+            // The duplicates question: Enter = yes, Esc = cancel (nothing uploaded), other keys do nothing.
+            if (key == org.lwjgl.input.Keyboard.KEY_RETURN) answerDialog(true);
+            else if (key == org.lwjgl.input.Keyboard.KEY_ESCAPE) dialogFor = null;
+            return true;
+        }
         if (screen != gui || gui == null || search == null || !search.isFocused()) return false;
         if (key == org.lwjgl.input.Keyboard.KEY_ESCAPE || key == org.lwjgl.input.Keyboard.KEY_RETURN) {
             search.setFocused(false);
@@ -248,6 +263,16 @@ public class ClientPanel {
         e.buttonList.add(hideFull);
         toggle = new ToggleButton(BASE_ID + 104);
         e.buttonList.add(toggle);
+        // Last: drawn over the list.
+        dialog = new DialogBox(BASE_ID + 105);
+        e.buttonList.add(dialog);
+        PanelButton yes = new PanelButton(BASE_ID + 106, 44, 16, I18n.format("patternrouter.dupes.yes"));
+        PanelButton no = new PanelButton(BASE_ID + 107, 44, 16, I18n.format("patternrouter.dupes.no"));
+        yes.z = no.z = 310;
+        dialogYes = yes;
+        dialogNo = no;
+        e.buttonList.add(dialogYes);
+        e.buttonList.add(dialogNo);
         guiButtons = e.buttonList;
         relayout();
     }
@@ -287,6 +312,7 @@ public class ClientPanel {
         }
         if (pattern != null) currentPattern = pattern;
         visible = pattern != null || System.currentTimeMillis() < statusUntil;
+        clickClosedDialog = false;
         if (dragging) drag(e.mouseX, e.mouseY);
         if (resizing) resize(e.mouseY);
         if (barDragging) {
@@ -385,7 +411,7 @@ public class ClientPanel {
         }
         if (!visible) return;
         for (RowButton b : rows) {
-            if (b.visible && !barDragging && !resizing && b.hovered(e.mouseX, e.mouseY)) {
+            if (b.visible && dialogFor == null && !barDragging && !resizing && b.hovered(e.mouseX, e.mouseY)) {
                 ProviderEntry en = entries.get(rowIndex(b.slot));
                 List<String> tip = new ArrayList<>();
                 tip.add(displayName(en));
@@ -439,6 +465,12 @@ public class ClientPanel {
         int id = e.button.id;
         if (id < BASE_ID || id > BASE_ID + 200) return;
         e.setCanceled(true);
+        if (dialogFor != null) {
+            // While the duplicates question is open only its buttons work.
+            if (e.button == dialogYes) answerDialog(true);
+            else if (e.button == dialogNo) answerDialog(false);
+            return;
+        }
         if (e.button == toggle) {
             Config.setPanelHidden(!Config.panelHidden);
             lastKey = null; // opened again: ask for the current pattern
@@ -460,9 +492,10 @@ public class ClientPanel {
             int index = rowIndex(((RowButton) e.button).slot);
             if (index < entries.size()) {
                 ProviderEntry picked = entries.get(index);
-                lastActionName = displayName(picked);
-                PatternRouterNetwork.channel.sendToServer(new UploadPatternMessage(token, received.indexOf(picked)));
-                setStatus(I18n.format("patternrouter.status.uploading"), GUI_TEXT_DIM, 3000);
+                // The same output is already elsewhere: ask whether to take those out (or keep them, to run the
+                // recipe in parallel).
+                if (!conflicts.isEmpty()) dialogFor = picked;
+                else upload(picked, false);
             }
         } else {
             int i = extractButtons.indexOf(e.button);
@@ -471,6 +504,28 @@ public class ClientPanel {
                 PatternRouterNetwork.channel.sendToServer(new ExtractConflictMessage(token, i));
                 setStatus(I18n.format("patternrouter.status.extracting"), GUI_TEXT_DIM, 3000);
             }
+        }
+    }
+
+    /** Yes: upload, then move every listed pattern with the same output into the inventory. No: upload only. */
+    private void answerDialog(boolean removeDupes) {
+        ProviderEntry picked = dialogFor;
+        dialogFor = null;
+        if (picked != null) upload(picked, removeDupes);
+    }
+
+    private void upload(ProviderEntry picked, boolean removeDupes) {
+        lastActionName = displayName(picked);
+        PatternRouterNetwork.channel.sendToServer(new UploadPatternMessage(token, received.indexOf(picked)));
+        setStatus(I18n.format("patternrouter.status.uploading"), GUI_TEXT_DIM, 3000);
+        if (!removeDupes) return;
+        // The server keeps this list after the upload; it takes them out one by one, checking each slot still
+        // holds the listed pattern.
+        uploadedTo = lastActionName;
+        dupesExpected = conflicts.size();
+        dupesDone = 0;
+        for (int i = 0; i < conflicts.size(); i++) {
+            PatternRouterNetwork.channel.sendToServer(new ExtractConflictMessage(token, i));
         }
     }
 
@@ -549,7 +604,14 @@ public class ClientPanel {
                 setStatus(I18n.format("patternrouter.result.maxcards", name), bad, 5000);
                 break;
             case ActionResultMessage.EXTRACTED:
-                setStatus(I18n.format("patternrouter.result.extracted", name), good, 4000);
+                if (dupesExpected > 0) {
+                    // One of the duplicates taken out after "yes": one status line for all of them.
+                    dupesDone++;
+                    setStatus(I18n.format("patternrouter.result.dupes", uploadedTo, dupesDone), good, 5000);
+                    if (dupesDone >= dupesExpected) dupesExpected = 0;
+                } else {
+                    setStatus(I18n.format("patternrouter.result.extracted", name), good, 4000);
+                }
                 lastKey = null; // refresh the conflict list
                 break;
             case ActionResultMessage.INVENTORY_FULL:
@@ -735,6 +797,7 @@ public class ClientPanel {
         for (GuiButton b : extractButtons) park(b);
         park(bar);
         placeToggle();
+        layoutDialog();
         park(side);
         park(hideFull);
         // Refresh NEI's slot mask right away when the panel appears, disappears, moves or resizes.
@@ -963,6 +1026,14 @@ public class ClientPanel {
                 && my < yPosition + HEADER;
             boolean onArrow = side != null && AeStyle.isOver(side, mx, my)
                 || hideFull != null && AeStyle.isOver(hideFull, mx, my);
+            if (dialogFor != null) {
+                // A click off the question cancels it: nothing is uploaded.
+                if (!AeStyle.isOver(dialog, mx, my)) {
+                    dialogFor = null;
+                    clickClosedDialog = true; // this click must not also hit a row under it
+                }
+                return false;
+            }
             // Any click: focus the search field when on it, leave it otherwise.
             if (search != null && search.getVisible()) search.mouseClicked(mx, my, 0);
             if (visible && overGrip(mx, my)) {
@@ -997,7 +1068,7 @@ public class ClientPanel {
 
         @Override
         public boolean mousePressed(Minecraft mc, int mx, int my) {
-            return enabled && visible && hovered(mx, my);
+            return enabled && visible && dialogFor == null && !clickClosedDialog && hovered(mx, my);
         }
 
         @Override
@@ -1060,7 +1131,7 @@ public class ClientPanel {
 
         @Override
         public boolean mousePressed(Minecraft mc, int mx, int my) {
-            if (!visible || !AeStyle.isOver(this, mx, my)) return false;
+            if (!visible || dialogFor != null || !AeStyle.isOver(this, mx, my)) return false;
             int top = thumbY(), h = thumbHeight();
             barGrab = my >= top && my < top + h ? my - top : h / 2;
             barDragging = true;
@@ -1155,6 +1226,59 @@ public class ClientPanel {
             } catch (Throwable t) {
                 return null;
             }
+        }
+    }
+
+    /** The question box over the list, its two buttons at the bottom; hidden (parked) when closed. */
+    private void layoutDialog() {
+        if (dialog == null) return;
+        if (dialogFor != null && (!visible || !entries.contains(dialogFor))) dialogFor = null; // list changed
+        boolean on = visible && dialogFor != null;
+        FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
+        int w = pw - 16;
+        int lines = on ? fr.listFormattedStringToWidth(dialogText(), w - 12)
+            .size() : 0;
+        int h = 8 + lines * 10 + 4 + 16 + 6;
+        dialog.xPosition = px + 8;
+        dialog.width = w;
+        dialog.height = h;
+        dialog.yPosition = Math.max(py + HEADER, Math.min(listY + 6, py + ph - footer - h));
+        dialog.visible = on;
+        dialogYes.yPosition = dialogNo.yPosition = dialog.yPosition + h - 16 - 6;
+        dialogYes.xPosition = dialog.xPosition + w / 2 - dialogYes.width - 3;
+        dialogNo.xPosition = dialog.xPosition + w / 2 + 3;
+        dialogYes.visible = dialogNo.visible = on;
+        park(dialog);
+        park(dialogYes);
+        park(dialogNo);
+    }
+
+    private String dialogText() {
+        return I18n.format("patternrouter.dupes.ask", conflicts.size()) + "\n§8"
+            + I18n.format("patternrouter.dupes.hint");
+    }
+
+    /** Raised box with the duplicates question; the panel behind is dimmed. */
+    private class DialogBox extends GuiButton {
+
+        DialogBox(int id) {
+            super(id, 0, 0, 1, 1, "");
+            this.enabled = false;
+        }
+
+        @Override
+        public void drawButton(Minecraft mc, int mx, int my) {
+            if (!visible) return;
+            GL11.glTranslatef(0, 0, 300); // over the item icons of the rows
+            drawRect(px + 1, py + 1, px + pw - 1, py + ph - 1, 0x80202020);
+            drawShadow(xPosition, yPosition, width, height);
+            drawWindow(xPosition, yPosition, width, height);
+            FontRenderer fr = mc.fontRenderer;
+            List<String> lines = fr.listFormattedStringToWidth(dialogText(), width - 12);
+            for (int i = 0; i < lines.size(); i++) {
+                fr.drawString(lines.get(i), xPosition + 6, yPosition + 8 + i * 10, GUI_TEXT);
+            }
+            GL11.glTranslatef(0, 0, -300);
         }
     }
 
