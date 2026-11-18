@@ -1,11 +1,13 @@
 package patternrouter.server.machine;
 
+import java.util.Collection;
 import java.util.List;
 
 import net.minecraft.item.ItemStack;
 
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.metatileentity.implementations.MTEHatchDataAccess;
+import gregtech.api.util.AssemblyLineUtils;
 import gregtech.api.util.GTRecipe.RecipeAssemblyLine;
 import gregtech.common.tileentities.machines.multi.MTEAssemblyLine;
 
@@ -35,7 +37,17 @@ public final class AssemblyLineData {
         return result;
     }
 
+    /** The same places GT's checkProcessing reads: the stick in the controller slot, then the data hatches. */
     private static boolean knows(MTEAssemblyLine line, ItemStack output) {
+        ItemStack controllerStick = line.getStackInSlot(1);
+        if (AssemblyLineUtils.isItemDataStick(controllerStick)) {
+            Collection<RecipeAssemblyLine> fromStick = AssemblyLineUtils.findALRecipeFromDataStick(controllerStick);
+            if (fromStick != null) {
+                for (RecipeAssemblyLine r : fromStick) {
+                    if (r != null && r.mOutput != null && r.mOutput.isItemEqual(output)) return true;
+                }
+            }
+        }
         for (MTEHatchDataAccess hatch : line.mDataAccessHatches) {
             if (hatch == null || !hatch.isValid()) continue;
             for (RecipeAssemblyLine r : hatch.getAssemblyLineRecipes()) {
