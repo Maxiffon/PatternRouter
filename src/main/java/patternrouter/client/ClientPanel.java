@@ -713,19 +713,18 @@ public class ClientPanel {
                 drawItem(mc, currentPattern, xPosition + 6, yPosition + 3);
                 tx = xPosition + 27;
             }
-            String page = entries.size() > rowsCap
-                ? (scroll + 1) + "-" + Math.min(scroll + rowsCap, entries.size()) + "/" + entries.size()
-                : "";
-            int titleRoom = xPosition + width - TITLE_BUTTONS - (page.isEmpty() ? 0 : fr.getStringWidth(page) + 4) - tx;
+            int titleRoom = xPosition + width - TITLE_BUTTONS - tx;
             String title = I18n.format("patternrouter.title");
             if (fr.getStringWidth(title) > titleRoom) title = I18n.format("patternrouter.title.short");
             fr.drawString(ellipsize(fr, title, titleRoom), tx, yPosition + 7, GUI_TEXT);
-            if (!page.isEmpty()) {
-                // Left of the side arrow in the title bar.
+            boolean statusShown = System.currentTimeMillis() < statusUntil && !status.isEmpty();
+            if (entries.size() > rowsCap && !statusShown) {
+                // Page counter in the footer, left of the scroll arrows (the title keeps its room).
+                String page = (scroll + 1) + "-" + Math.min(scroll + rowsCap, entries.size()) + "/" + entries.size();
                 fr.drawString(
                     page,
-                    xPosition + width - TITLE_BUTTONS - fr.getStringWidth(page),
-                    yPosition + 7,
+                    up.xPosition - 4 - fr.getStringWidth(page),
+                    yPosition + height - footer + 7,
                     GUI_TEXT_DIM);
             }
             int shown = Math.min(entries.size(), rowsCap);
