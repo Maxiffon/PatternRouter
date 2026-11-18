@@ -9,6 +9,7 @@ import net.minecraft.command.ICommandSender;
 import net.minecraft.command.WrongUsageException;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 
 import patternrouter.PatternRouter;
@@ -84,13 +85,21 @@ public final class Bench extends CommandBase {
     public static void tick() {
         Job j = job;
         if (j == null) return;
-        if (j.player.playerNetServerHandler == null || !Candidates.hasBenchContext(j.player)) {
+        if (!isOnline(j.player) || !Candidates.hasBenchContext(j.player)) {
             PatternRouter.LOG.info("Pattern Router bench stopped: player left or the network is gone");
             job = null;
             return;
         }
         long t0 = System.nanoTime();
-        Candidates.buildReply(j.player, "", Collections.<ItemStack>emptyList(), "", true);
+        try {
+            Candidates.buildReply(j.player, "", Collections.<ItemStack>emptyList(), "", true);
+        } catch (Throwable t) {
+            job = null;
+            PatternRouter.LOG.error("Pattern Router bench stopped: the lookup failed", t);
+            j.player
+                .addChatMessage(new ChatComponentText("Pattern Router bench stopped: the lookup failed (see log)."));
+            return;
+        }
         long micros = (System.nanoTime() - t0) / 1000;
         if (j.first < 0) j.first = micros;
         if (j.warmupLeft > 0) {
@@ -101,6 +110,17 @@ public final class Bench extends CommandBase {
         if (j.times.size() < j.runs) return;
         job = null;
         report(j);
+    }
+
+    private static boolean isOnline(EntityPlayerMP player) {
+        MinecraftServer server = MinecraftServer.getServer();
+        return server != null && server.getConfigurationManager().playerEntityList.contains(player);
+    }
+
+    /** The player left: drop a bench they started. */
+    public static void onLogout(EntityPlayerMP player) {
+        Job j = job;
+        if (j != null && j.player == player) job = null;
     }
 
     private static void report(Job j) {

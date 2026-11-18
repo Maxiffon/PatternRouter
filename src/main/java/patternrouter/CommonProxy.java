@@ -7,9 +7,13 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import net.minecraft.entity.player.EntityPlayerMP;
+
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+import cpw.mods.fml.common.gameevent.PlayerEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
+import patternrouter.server.Bench;
 
 public class CommonProxy {
 
@@ -35,7 +39,11 @@ public class CommonProxy {
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.START) return;
-        patternrouter.server.Bench.tick();
+        try {
+            Bench.tick();
+        } catch (Throwable t) {
+            PatternRouter.LOG.error("Pattern Router bench tick failed", t);
+        }
         Runnable r;
         int budget = 64;
         // At most ~25 ms of lookups per tick (half a tick); the rest waits for the next tick. At least one task runs.
@@ -63,6 +71,11 @@ public class CommonProxy {
                 if (ms >= 200) PatternRouter.LOG.warn("Pattern Router server task took {} ms", ms);
             }
         }
+    }
+
+    @SubscribeEvent
+    public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.player instanceof EntityPlayerMP) Bench.onLogout((EntityPlayerMP) event.player);
     }
 
     private static final long SLOW_TASK_MS = 2000;
