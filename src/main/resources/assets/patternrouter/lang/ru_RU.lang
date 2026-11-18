@@ -40,4 +40,5 @@ patternrouter.result.nocard=Нет места в %s, карта расширен
 patternrouter.result.maxcards=Нет места в %s, карт расширения уже максимум
 patternrouter.flag.nofluid=не принимает жидкость
 patternrouter.flag.byname=по названию
+patternrouter.flag.othermode=другой режим
 patternrouter.conflict.title.short=⚠ Уже есть: %s

@@ -51,11 +51,7 @@ final class EntryText {
         StringBuilder sb = new StringBuilder();
         if (e.has(ProviderEntry.REMEMBERED)) flag(sb, warn, "★ ", "patternrouter.flag.remembered");
         if (e.has(ProviderEntry.SETUP_FITS)) flag(sb, good, "✔ ", "patternrouter.flag.mold");
-        else if (e.has(ProviderEntry.SETUP_CONFLICTS)) flag(
-            sb,
-            bad,
-            "✘ ",
-            e.has(ProviderEntry.NO_FLUIDS) ? "patternrouter.flag.nofluid" : "patternrouter.flag.othermold");
+        else if (e.has(ProviderEntry.SETUP_CONFLICTS)) flag(sb, bad, "✘ ", conflictKey(e));
         else if (e.has(ProviderEntry.BY_NAME)) flag(sb, warn, "≈ ", "patternrouter.flag.byname");
         else if (e.has(ProviderEntry.RECIPE_MATCH)) flag(sb, good, "✔ ", "patternrouter.flag.machine");
         if (e.has(ProviderEntry.HAS_SAME_OUTPUT)) flag(sb, warn, "", "patternrouter.flag.same");
@@ -64,6 +60,12 @@ final class EntryText {
         else sb.append(dim)
             .append(I18n.format(tooltip ? "patternrouter.flag.free.long" : "patternrouter.flag.free", e.freeSlots));
         return sb.toString();
+    }
+
+    private static String conflictKey(ProviderEntry e) {
+        if (e.has(ProviderEntry.NO_FLUIDS)) return "patternrouter.flag.nofluid";
+        if (e.has(ProviderEntry.OTHER_MODE)) return "patternrouter.flag.othermode";
+        return "patternrouter.flag.othermold";
     }
 
     private static void flag(StringBuilder sb, String color, String symbol, String key) {

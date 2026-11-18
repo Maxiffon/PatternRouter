@@ -25,6 +25,9 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
   output before 1.3.9 are not recognised any more (the panel now lists the P2P input instead): pick it once again.
 - **NEI tab decides the machine**: a recipe moved from the "Cable Coating" tab goes to the L.A.T.E.X., not to
   assemblers that have a similar recipe.
+- **Machine modes**: a multiblock with modes (Precise Assembler, Circuit Assembly Line, distillation towers, GT++
+  wash plant, packager, press, dehydrator, electromagnetic separator...) fits only recipes of the mode it is set to.
+  A recipe of another mode is shown as "other mode" (and hidden when some machine fits).
 - **Skipped vacuum freezer step**: a "dust -> ingot" pattern for a metal that the EBF makes as a hot ingot goes to
   the EBF, for setups where an import bus (e.g. with an ore dictionary card) carries the hot ingot to the freezer.
   Used only when no machine makes the ingot from the pattern inputs directly.

@@ -40,4 +40,5 @@ patternrouter.result.nocard=%s is full and no Pattern Capacity Card was found (i
 patternrouter.result.maxcards=%s is full and holds the maximum of capacity cards
 patternrouter.flag.nofluid=doesn't take fluids
 patternrouter.flag.byname=by name
+patternrouter.flag.othermode=other mode
 patternrouter.conflict.title.short=⚠ Already exists: %s

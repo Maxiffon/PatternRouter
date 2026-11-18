@@ -21,6 +21,7 @@ import patternrouter.server.ae2.ProviderCompat;
 import patternrouter.server.machine.MachineDiagnostics;
 import patternrouter.server.machine.MachineInventory;
 import patternrouter.server.machine.MachineLocator;
+import patternrouter.server.machine.MachineModes;
 import patternrouter.server.recipe.PatternContents;
 import patternrouter.server.recipe.RecipeFit;
 import patternrouter.server.recipe.RecipeMaps;
@@ -47,7 +48,8 @@ final class ProviderScorer {
                 s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_FITS;
             return s;
         }
-        Collection<RecipeMap<?>> maps = MachineLocator.recipeMapsFed(view);
+        MachineModes modes = MachineLocator.recipeMapsFed(view);
+        Collection<RecipeMap<?>> maps = modes.current;
         if (wanted != null && !maps.contains(wanted) && PatternRouter.LOG.isDebugEnabled()) {
             PatternRouter.LOG.debug(
                 "  {} ({}): machine {}, maps {}, wanted {}",
@@ -58,18 +60,34 @@ final class ProviderScorer {
                 MachineDiagnostics.names(maps),
                 wanted.unlocalizedName);
         }
-        if (maps.isEmpty()) {
+        if (modes.isEmpty()) {
             s.feedsUnformedMultiblock = MachineLocator.feedsUnformedMultiblock(view);
             return s;
         }
         s.machineSeen = true;
-        MachineInventory machine = MachineInventory.of(view, maps);
+        MachineInventory machine = MachineInventory.of(view, modes.all());
         if (PatternRouter.LOG.isDebugEnabled()) logMachine(s, view, maps, machine);
         // AE2 captions only CRIBs; for other providers show what the machine is set up with ([5], mold, lens).
         if (s.suffix.isEmpty()) s.setupItems.addAll(oneOfEach(machine.setupItems));
         if (wanted != null) scoreForCategory(s, maps, wanted, contents, machine, nonConsumables);
         else if (!contents.isEmpty()) scoreByLookup(s, maps, contents, machine);
+        if (!s.has(ProviderEntry.RECIPE_MATCH) && fitsOtherMode(modes.otherModes, wanted, contents, machine)) {
+            s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS | ProviderEntry.OTHER_MODE;
+        }
         return s;
+    }
+
+    /** The pattern is a recipe of a mode the machine is not set to (Precise Assembler set to plain assembling). */
+    private static boolean fitsOtherMode(Collection<RecipeMap<?>> otherModes, RecipeMap<?> wanted,
+        PatternContents contents, MachineInventory machine) {
+        if (wanted != null) return otherModes.contains(wanted);
+        if (contents.isEmpty()) return false;
+        for (RecipeMap<?> map : otherModes) {
+            if (RecipeMaps.canMake(map, contents) && RecipeFit.best(map, contents, machine) != RecipeFit.NONE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void readIdentity(ProviderScore s, IInterfaceViewable view) {

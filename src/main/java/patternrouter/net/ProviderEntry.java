@@ -19,6 +19,7 @@ public class ProviderEntry {
     public static final int REMEMBERED = 16; // the player put this kind of pattern here before
     public static final int NO_FLUIDS = 32; // the pattern has fluid inputs, the provider can't push fluids
     public static final int BY_NAME = 64; // machine not seen, but the interface name matches the NEI tab
+    public static final int OTHER_MODE = 128; // the machine runs this recipe in a mode it is not set to
 
     private static final int MAX_FREE_SLOTS = 65535;
     private static final int MAX_SETUP_ITEMS = 6;

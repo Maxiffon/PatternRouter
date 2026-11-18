@@ -4,11 +4,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.util.ForgeDirection;
@@ -59,31 +57,42 @@ public final class MachineLocator {
         lookupGrids = Collections.emptyList();
     }
 
-    /** Recipe maps of the machine this interface/CRIB feeds. */
-    public static Collection<RecipeMap<?>> recipeMapsFed(IInterfaceViewable view) {
-        Set<RecipeMap<?>> maps = new HashSet<>();
+    /** Recipe maps of the machine this interface/CRIB feeds, split by the machines' current mode. */
+    public static MachineModes recipeMapsFed(IInterfaceViewable view) {
+        MachineModes modes = new MachineModes();
         TileEntity self = view.getTileEntity();
-        if (self == null) return maps;
+        if (self == null) return modes;
         // CRIB and other GT hatches: the machine is the multiblock controller.
-        maps.addAll(recipeMapsOf(self, true));
+        addRecipeMaps(modes, self, true);
         // AE2 ME interface: the machine is the neighbour it outputs into.
         if (view instanceof IInterfaceHost) {
-            for (TileEntity n : deliveryTargets(view)) maps.addAll(recipeMapsOf(n, true));
+            for (TileEntity n : deliveryTargets(view)) addRecipeMaps(modes, n, true);
         }
-        return maps;
+        return modes;
     }
 
-    private static Collection<RecipeMap<?>> recipeMapsOf(TileEntity te, boolean followHatchOwner) {
-        if (!(te instanceof IGregTechTileEntity gtTile)) return Collections.emptyList();
+    private static void addRecipeMaps(MachineModes into, TileEntity te, boolean followHatchOwner) {
+        if (!(te instanceof IGregTechTileEntity gtTile)) return;
         IMetaTileEntity mte = gtTile.getMetaTileEntity();
         if (mte instanceof RecipeMapWorkable workable) {
-            Collection<RecipeMap<?>> c = workable.getAvailableRecipeMaps();
-            if (!c.isEmpty()) return c;
+            Collection<RecipeMap<?>> available = workable.getAvailableRecipeMaps();
+            if (!available.isEmpty()) {
+                into.add(available, currentRecipeMap(workable));
+                return;
+            }
         }
         if (mte instanceof MTEHatch && followHatchOwner) {
-            return recipeMapsOf(HatchOwners.controllerTile(mte, te), false);
+            addRecipeMaps(into, HatchOwners.controllerTile(mte, te), false);
         }
-        return Collections.emptyList();
+    }
+
+    /** The map the machine's current mode runs; null if it can't say (no modes, or a recipe map per circuit). */
+    private static RecipeMap<?> currentRecipeMap(RecipeMapWorkable workable) {
+        try {
+            return workable.getRecipeMap();
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** A CRIB, or a bus next to an ME interface, that GT has not attached to a formed multiblock. */
