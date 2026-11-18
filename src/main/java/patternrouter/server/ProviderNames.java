@@ -21,12 +21,19 @@ final class ProviderNames {
             "промышленная",
             "продвинутый",
             "машина",
+            // Shared by the EBF, arc, plasma arc, vacuum and electric furnaces: "Доменная печь" must not pull in a
+            // provider named "Дуговая печь".
+            "печь",
+            "электрическая",
+            "электрический",
             "large",
             "mega",
             "industrial",
             "advanced",
             "machine",
-            "multiblock"));
+            "multiblock",
+            "furnace",
+            "electric"));
     private static final int MIN_WORD_LENGTH = 4;
     /** Words are compared by this many first letters, so word endings don't matter. */
     private static final int COMPARED_PREFIX = 5;

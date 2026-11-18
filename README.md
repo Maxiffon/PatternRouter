@@ -25,8 +25,12 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
   output before 1.3.9 are not recognised any more (the panel now lists the P2P input instead): pick it once again.
 - **NEI tab decides the machine**: a recipe moved from the "Cable Coating" tab goes to the L.A.T.E.X., not to
   assemblers that have a similar recipe.
+- **Skipped vacuum freezer step**: a "dust -> ingot" pattern for a metal that the EBF makes as a hot ingot goes to
+  the EBF, for setups where an import bus (e.g. with an ore dictionary card) carries the hot ingot to the freezer.
+  Used only when no machine makes the ingot from the pattern inputs directly.
 - **Renamed interfaces** match the NEI tab name ("≈ by name") when the machine behind them can't be seen. Only names
-  you gave count (an unnamed AE2 interface shows its neighbour's name, e.g. "Molecular Assembler").
+  you gave count (an unnamed AE2 interface shows its neighbour's name, e.g. "Molecular Assembler"). Words shared by
+  many machines ("furnace", "electric") don't count: "Electric Blast Furnace" does not match "Arc Furnace".
 - **Pattern Repeaters**: machines in networks linked by AE2 Pattern Repeaters are found too.
 - **Subnets**: an interface that pushes into another ME network finds the GT machines that subnet feeds (its ME input
   buses/hatches, export or storage buses on machine buses, interfaces next to machines). Only a neighbour that takes

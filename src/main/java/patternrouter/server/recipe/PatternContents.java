@@ -64,6 +64,24 @@ public final class PatternContents {
         return pc;
     }
 
+    /** The same inputs with another item output: the step before one the pattern skips. */
+    public PatternContents withOutputItem(ItemStack output) {
+        PatternContents pc = new PatternContents();
+        pc.items.addAll(items);
+        pc.fluids.addAll(fluids);
+        pc.outItem = output;
+        return pc;
+    }
+
+    public ItemStack outputItem() {
+        return outItem;
+    }
+
+    public boolean hasItemInput(ItemStack stack) {
+        for (ItemStack have : items) if (have != null && have.isItemEqual(stack)) return true;
+        return false;
+    }
+
     /** Crafting (workbench) pattern, run by molecular assemblers. */
     public boolean isCraftingPattern() {
         return craftingPattern;

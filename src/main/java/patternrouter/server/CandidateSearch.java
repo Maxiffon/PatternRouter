@@ -35,6 +35,7 @@ import patternrouter.server.machine.HatchOwners;
 import patternrouter.server.machine.MachineLocator;
 import patternrouter.server.recipe.PatternContents;
 import patternrouter.server.recipe.RecipeMaps;
+import patternrouter.server.recipe.SkippedCooling;
 
 /**
  * Finds the interfaces and CRIBs in the pattern terminal's ME network (and networks linked to it) whose machine fits
@@ -147,7 +148,17 @@ public final class CandidateSearch {
         long started = System.nanoTime();
         World world = player.worldObj;
         category = RecipeMaps.checkedCategory(category, nonConsumables, pattern, world);
-        List<ProviderScore> scored = scoreProviders(grid, player, world, category, nonConsumables, pattern);
+        PatternContents contents = PatternContents.of(pattern, world);
+        PatternContents beforeFreezer = SkippedCooling.beforeFreezer(contents);
+        if (beforeFreezer != null && SkippedCooling.isFreezerTabOfShortcut(category, contents, nonConsumables)) {
+            category = "";
+        }
+        List<ProviderScore> scored = scoreProviders(grid, player, world, category, nonConsumables, pattern, contents);
+        if (beforeFreezer != null && !anyHas(scored, ProviderEntry.RECIPE_MATCH)) {
+            // Nothing makes the output from these inputs: look for the machine making what the freezer cools.
+            RecipeMaps.endLookup();
+            scored = scoreProviders(grid, player, world, "", nonConsumables, pattern, beforeFreezer);
+        }
         if (RecipeMaps.forCategory(category) != null) markNameMatches(scored, machineName);
         String choiceKey = RememberedChoices.keyFor(category, nonConsumables, Patterns.storedOutput(pattern, world));
         markRemembered(scored, player, choiceKey);
@@ -169,12 +180,14 @@ public final class CandidateSearch {
         }
     }
 
-    /** Every active provider of the terminal's network and the linked networks where the player may build. */
+    /**
+     * Every active provider of the terminal's network and the linked networks where the player may build, checked
+     * against {@code contents}: the pattern, or the step before one it skips.
+     */
     private static List<ProviderScore> scoreProviders(IGrid grid, EntityPlayerMP player, World world, String category,
-        List<ItemStack> nonConsumables, ItemStack pattern) {
+        List<ItemStack> nonConsumables, ItemStack pattern, PatternContents contents) {
         RecipeMap<?> wanted = RecipeMaps.forCategory(category);
         ItemStack output = Patterns.storedOutput(pattern, world);
-        PatternContents contents = PatternContents.of(pattern, world);
         List<ProviderScore> out = new ArrayList<>();
         Set<IInterfaceViewable> seen = new HashSet<>();
         List<IGrid> linked = GridAccess.linkedGrids(grid);
