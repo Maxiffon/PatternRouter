@@ -9,6 +9,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -376,7 +377,7 @@ public final class Candidates {
     private static List<String> nameWords(String title) {
         List<String> out = new ArrayList<>();
         if (title == null) return out;
-        for (String w : title.toLowerCase()
+        for (String w : title.toLowerCase(Locale.ROOT)
             .split("[^\\p{L}]+")) {
             if (w.length() >= 4 && !NAME_STOP.contains(w)) out.add(w);
         }
@@ -389,7 +390,7 @@ public final class Candidates {
      */
     private static boolean nameMatches(String name, List<String> words) {
         if (name == null || name.isEmpty() || words.isEmpty()) return false;
-        String n = name.toLowerCase();
+        String n = name.toLowerCase(Locale.ROOT);
         for (String w : words) if (n.contains(w.length() > 5 ? w.substring(0, 5) : w)) return true;
         return false;
     }
@@ -1226,14 +1227,16 @@ public final class Candidates {
             for (appeng.api.storage.data.IAEStackType<?> t : view.getSupportedStackTypes()) {
                 if (t != null && t.getId() != null
                     && t.getId()
-                        .toLowerCase()
+                        .toLowerCase(Locale.ROOT)
                         .contains("fluid"))
                     return true;
             }
-            // Fluid-capable providers from add-ons that don't report types (dual interfaces).
-            return view.getClass()
-                .getName()
-                .matches("(?i).*(fluid|dual).*");
+            // Fluid-capable providers from add-ons that don't report types (dual interfaces). The simple class name
+            // only: a package name says nothing about the provider.
+            String cls = view.getClass()
+                .getSimpleName()
+                .toLowerCase(Locale.ROOT);
+            return cls.contains("fluid") || cls.contains("dual");
         } catch (Throwable t) {
             return true;
         }

@@ -82,6 +82,10 @@ public final class Net {
         public List<ItemStack> nonConsumables = new ArrayList<>();
         /** NEI tab title in the player's language (e.g. "Fluid Solidifier"), for matching renamed interfaces. */
         public String machineName = "";
+        /** False if the packet was malformed; the server ignores it. */
+        boolean valid = true;
+
+        private static final int MAX_NON_CONSUMABLES = 16;
 
         public Request() {}
 
@@ -94,7 +98,13 @@ public final class Net {
         @Override
         public void fromBytes(ByteBuf buf) {
             category = ByteBufUtils.readUTF8String(buf);
-            int n = Math.min(buf.readUnsignedByte(), 16);
+            int n = buf.readUnsignedByte();
+            if (n > MAX_NON_CONSUMABLES) {
+                // Not written by this mod's client: the rest can't be read reliably, drop the request.
+                valid = false;
+                buf.skipBytes(buf.readableBytes());
+                return;
+            }
             for (int i = 0; i < n; i++) {
                 ItemStack s = ByteBufUtils.readItemStack(buf);
                 if (s != null) nonConsumables.add(s);
@@ -105,7 +115,7 @@ public final class Net {
         @Override
         public void toBytes(ByteBuf buf) {
             ByteBufUtils.writeUTF8String(buf, category);
-            int n = Math.min(nonConsumables.size(), 16);
+            int n = Math.min(nonConsumables.size(), MAX_NON_CONSUMABLES);
             buf.writeByte(n);
             for (int i = 0; i < n; i++) ByteBufUtils.writeItemStack(buf, nonConsumables.get(i));
             ByteBufUtils.writeUTF8String(buf, machineName.length() > 100 ? machineName.substring(0, 100) : machineName);
@@ -115,6 +125,7 @@ public final class Net {
 
             @Override
             public IMessage onMessage(Request msg, MessageContext ctx) {
+                if (!msg.valid) return null;
                 EntityPlayerMP player = ctx.getServerHandler().playerEntity;
                 ServerQueue.submitLatestRequest(
                     player.getUniqueID(),

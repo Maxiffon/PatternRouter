@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.oredict.OreDictionary;
 
 import codechicken.nei.PositionedStack;
 import codechicken.nei.recipe.IRecipeHandler;
@@ -64,10 +65,7 @@ public final class RecipeContext {
             outputs = outs;
             time = System.currentTimeMillis();
         } catch (Throwable t) {
-            category = "";
-            nonConsumables = Collections.emptyList();
-            result = null;
-            outputs = Collections.emptyList();
+            clear();
         }
     }
 
@@ -95,6 +93,7 @@ public final class RecipeContext {
     }
 
     private static boolean same(ItemStack a, ItemStack b) {
-        return a.getItem() == b.getItem() && (a.getItemDamage() == b.getItemDamage() || a.getItemDamage() == 32767);
+        return a.getItem() == b.getItem()
+            && (a.getItemDamage() == b.getItemDamage() || a.getItemDamage() == OreDictionary.WILDCARD_VALUE);
     }
 }

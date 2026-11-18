@@ -22,9 +22,6 @@ public class ClientProxy extends CommonProxy {
             .bus()
             .register(panel);
         if (Loader.isModLoaded("NotEnoughItems")) NeiCompat.register(panel);
-        FMLCommonHandler.instance()
-            .bus()
-            .register(this);
     }
 
     /** A recipe transferred on one server/world must not apply to patterns on the next one. */
