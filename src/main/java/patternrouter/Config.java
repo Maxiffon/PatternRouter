@@ -24,6 +24,9 @@ public final class Config {
     public static boolean hideFull;
     /** Rows in the panel list (resize grip). */
     public static int panelRows = 5;
+    /** Panel folded by its button in AE2's column. */
+    public static boolean panelHidden;
+    private static final String HIDDEN_COMMENT = "Panel folded away. Switched by the pattern button in the AE2 button column left of the terminal.";
 
     private static Configuration config;
 
@@ -36,8 +39,17 @@ public final class Config {
         panelX = config.getInt("panelX", CATEGORY, 0, -4096, 4096, POS_COMMENT);
         panelY = config.getInt("panelY", CATEGORY, 0, -4096, 4096, POS_COMMENT);
         hideFull = config.getBoolean("hideFull", CATEGORY, false, HIDE_FULL_COMMENT);
+        panelHidden = config.getBoolean("panelHidden", CATEGORY, false, HIDDEN_COMMENT);
         panelRows = config.getInt("panelRows", CATEGORY, 5, 2, 20, ROWS_COMMENT);
         if (config.hasChanged()) config.save();
+    }
+
+    public static void setPanelHidden(boolean hidden) {
+        panelHidden = hidden;
+        if (config == null) return;
+        config.get(CATEGORY, "panelHidden", false, HIDDEN_COMMENT)
+            .set(hidden);
+        config.save();
     }
 
     public static void setPanelRows(int rows) {

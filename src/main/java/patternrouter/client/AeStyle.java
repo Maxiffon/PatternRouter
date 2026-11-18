@@ -42,33 +42,50 @@ final class AeStyle {
         return mx >= b.xPosition && my >= b.yPosition && mx < b.xPosition + b.width && my < b.yPosition + b.height;
     }
 
-    /** AE2-style window: black outline, light bevel top-left, dark bevel bottom-right. */
+    /**
+     * AE2-style window with rounded corners: black outline (a diagonal pixel at each corner), light bevel top-left,
+     * dark
+     * bevel bottom-right.
+     */
     static void drawWindow(int x, int y, int w, int h) {
-        Gui.drawRect(x + 1, y, x + w - 1, y + 1, OUTLINE);
-        Gui.drawRect(x + 1, y + h - 1, x + w - 1, y + h, OUTLINE);
-        Gui.drawRect(x, y + 1, x + 1, y + h - 1, OUTLINE);
-        Gui.drawRect(x + w - 1, y + 1, x + w, y + h - 1, OUTLINE);
-        Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, GUI_FILL);
-        Gui.drawRect(x + 1, y + 1, x + w - 3, y + 3, BEVEL_LIGHT);
-        Gui.drawRect(x + 1, y + 1, x + 3, y + h - 3, BEVEL_LIGHT);
-        Gui.drawRect(x + 3, y + h - 3, x + w - 1, y + h - 1, BEVEL_DARK);
-        Gui.drawRect(x + w - 3, y + 3, x + w - 1, y + h - 1, BEVEL_DARK);
+        Gui.drawRect(x + 2, y, x + w - 2, y + 1, OUTLINE);
+        Gui.drawRect(x + 2, y + h - 1, x + w - 2, y + h, OUTLINE);
+        Gui.drawRect(x, y + 2, x + 1, y + h - 2, OUTLINE);
+        Gui.drawRect(x + w - 1, y + 2, x + w, y + h - 2, OUTLINE);
+        pixel(x + 1, y + 1, OUTLINE);
+        pixel(x + w - 2, y + 1, OUTLINE);
+        pixel(x + 1, y + h - 2, OUTLINE);
+        pixel(x + w - 2, y + h - 2, OUTLINE);
+        Gui.drawRect(x + 2, y + 1, x + w - 2, y + h - 1, GUI_FILL);
+        Gui.drawRect(x + 1, y + 2, x + w - 1, y + h - 2, GUI_FILL);
+        Gui.drawRect(x + 2, y + 1, x + w - 3, y + 3, BEVEL_LIGHT);
+        Gui.drawRect(x + 1, y + 2, x + 3, y + h - 3, BEVEL_LIGHT);
+        Gui.drawRect(x + 3, y + h - 3, x + w - 2, y + h - 1, BEVEL_DARK);
+        Gui.drawRect(x + w - 3, y + 3, x + w - 1, y + h - 2, BEVEL_DARK);
+    }
+
+    private static void pixel(int x, int y, int color) {
+        Gui.drawRect(x, y, x + 1, y + 1, color);
     }
 
     /** Inset area (like the slot area of a terminal). */
     static void drawInset(int x, int y, int w, int h) {
-        Gui.drawRect(x, y, x + w, y + h, INSET_FILL);
-        Gui.drawRect(x, y, x + w, y + 1, INSET_EDGE);
-        Gui.drawRect(x, y, x + 1, y + h, INSET_EDGE);
-        Gui.drawRect(x + 1, y + h - 1, x + w, y + h, BEVEL_LIGHT);
-        Gui.drawRect(x + w - 1, y + 1, x + w, y + h, BEVEL_LIGHT);
+        Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, INSET_FILL);
+        Gui.drawRect(x + 1, y, x + w - 1, y + 1, INSET_EDGE);
+        Gui.drawRect(x, y + 1, x + 1, y + h - 1, INSET_EDGE);
+        Gui.drawRect(x + 1, y + h - 1, x + w - 1, y + h, BEVEL_LIGHT);
+        Gui.drawRect(x + w - 1, y + 1, x + w, y + h - 1, BEVEL_LIGHT);
     }
 
     /** Raised tile: light bevel top-left, shadow bottom-right; inverted when pressed. */
     static void drawRaised(int x, int y, int w, int h, int fill, boolean pressed) {
         int hi = pressed ? BEVEL_DARK : BEVEL_LIGHT;
         int lo = pressed ? BEVEL_LIGHT : BEVEL_DARK;
-        Gui.drawRect(x, y, x + w, y + h, INSET_EDGE);
+        // Edge without the corner pixels: softly rounded.
+        Gui.drawRect(x + 1, y, x + w - 1, y + 1, INSET_EDGE);
+        Gui.drawRect(x + 1, y + h - 1, x + w - 1, y + h, INSET_EDGE);
+        Gui.drawRect(x, y + 1, x + 1, y + h - 1, INSET_EDGE);
+        Gui.drawRect(x + w - 1, y + 1, x + w, y + h - 1, INSET_EDGE);
         Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, fill);
         Gui.drawRect(x + 1, y + 1, x + w - 2, y + 2, hi);
         Gui.drawRect(x + 1, y + 1, x + 2, y + h - 2, hi);

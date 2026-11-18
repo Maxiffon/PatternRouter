@@ -15,6 +15,7 @@ import static patternrouter.client.EntryText.flagsLine;
 import static patternrouter.client.EntryText.resolveName;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Queue;
@@ -68,7 +69,7 @@ public class ClientPanel {
     /** Gap left of the terminal: AE2 sort / view button column. */
     private static final int LEFT_GAP = 54;
     /** Candidate row: machine name, CRIB caption (mold/circuit), flags. */
-    private static final int ROW_H = 34;
+    private static final int ROW_H = 37;
     /** Most rows the player can stretch the list to (Config.panelRows); one more button for a half-scrolled row. */
     public static final int MAX_ROWS = 20;
     public static final int MIN_ROWS = 2;
@@ -76,11 +77,10 @@ public class ClientPanel {
     private static final int SB_W = 7;
     /** Resize grip in the bottom-right corner. */
     private static final int GRIP = 10;
-    /** Wheel step and how much of the way to the target the list moves per frame. */
-    private static final int WHEEL_STEP = ROW_H / 2;
+    /** How much of the way to the target the list moves per frame. */
     private static final float EASE = 0.35f;
     /** Conflict row: machine with the old pattern and an Extract button. */
-    private static final int CONF_H = 24;
+    private static final int CONF_H = 26;
     private static final int CONF_ROWS = 3;
     private static final int HEADER = 22;
     private static final int FOOTER = 22;
@@ -113,6 +113,10 @@ public class ClientPanel {
     private final List<ConflictRow> confRows = new ArrayList<>();
     private final List<GuiButton> extractButtons = new ArrayList<>();
     private ScrollBar bar;
+    /** Fold/unfold button placed in AE2's button column left of the terminal. */
+    private ToggleButton toggle;
+    /** The terminal's button list (to find AE2's button column). */
+    private List<GuiButton> guiButtons = Collections.emptyList();
     /** Dragging the scroll bar thumb: mouse offset from the thumb top. */
     private boolean barDragging;
     private int barGrab;
@@ -195,7 +199,7 @@ public class ClientPanel {
             e.buttonList.add(b);
         }
         for (int i = 0; i < CONF_ROWS; i++) {
-            ConflictRow c = new ConflictRow(BASE_ID + 20 + i, i);
+            ConflictRow c = new ConflictRow(BASE_ID + 30 + i, i);
             confRows.add(c);
             e.buttonList.add(c);
             GuiButton x = new PanelButton(BASE_ID + 40 + i, 52, 16, I18n.format("patternrouter.button.extract"));
@@ -208,12 +212,22 @@ public class ClientPanel {
         e.buttonList.add(side);
         hideFull = new PanelButton(BASE_ID + 103, 14, 14, "");
         e.buttonList.add(hideFull);
+        toggle = new ToggleButton(BASE_ID + 104);
+        e.buttonList.add(toggle);
+        guiButtons = e.buttonList;
         relayout();
     }
 
     @SubscribeEvent
     public void onDrawPre(GuiScreenEvent.DrawScreenEvent.Pre e) {
         if (e.gui != gui || gui == null || bg == null) return;
+        if (Config.panelHidden) {
+            // Folded by the button in AE2's column: no list, no requests until it is opened again.
+            if (lastKey != null) resetList();
+            visible = false;
+            relayout();
+            return;
+        }
         ItemStack pattern = findPattern();
         if (pattern != null) {
             String key = keyOf(pattern);
@@ -243,7 +257,11 @@ public class ClientPanel {
         if (resizing) resize(e.mouseY);
         if (barDragging) {
             if (Mouse.isButtonDown(0)) scrollToThumb(e.mouseY - barGrab);
-            else barDragging = false;
+            else {
+                barDragging = false;
+                // Let go: glide to the nearest whole row, no row is left cut by the list edge.
+                scrollTarget = Math.round(scrollPx / ROW_H) * ROW_H;
+            }
         }
         // Ease toward the target; the thumb drag sets both, so it follows the mouse exactly.
         float d = scrollTarget - scrollPx;
@@ -289,7 +307,9 @@ public class ClientPanel {
         int mx = Mouse.getEventX() * gui.width / mc.displayWidth;
         int my = gui.height - Mouse.getEventY() * gui.height / mc.displayHeight - 1;
         if (mx < px || mx >= px + pw || my < py || my >= py + ph) return false;
-        scrollTarget = Math.max(0, Math.min(maxScrollPx, scrollTarget - Integer.signum(dwheel) * WHEEL_STEP));
+        // A row per notch, always to a whole row: the list glides there and stops with no row cut by its edge.
+        int row = Math.round(scrollTarget / ROW_H) - Integer.signum(dwheel);
+        scrollTarget = Math.max(0, Math.min(maxScrollPx, row * ROW_H));
         return true;
     }
 
@@ -319,7 +339,17 @@ public class ClientPanel {
 
     @SubscribeEvent
     public void onDrawPost(GuiScreenEvent.DrawScreenEvent.Post e) {
-        if (e.gui != gui || gui == null || !visible) return;
+        if (e.gui != gui || gui == null) return;
+        if (toggle != null && toggle.visible && AeStyle.isOver(toggle, e.mouseX, e.mouseY)) {
+            drawTooltip(
+                Arrays.asList(
+                    I18n.format("patternrouter.tip.panel.title"),
+                    "§7" + I18n
+                        .format(Config.panelHidden ? "patternrouter.tip.panel.show" : "patternrouter.tip.panel.hide")),
+                e.mouseX,
+                e.mouseY);
+        }
+        if (!visible) return;
         for (RowButton b : rows) {
             if (b.visible && !barDragging && !resizing && b.hovered(e.mouseX, e.mouseY)) {
                 ProviderEntry en = entries.get(rowIndex(b.slot));
@@ -370,7 +400,10 @@ public class ClientPanel {
         int id = e.button.id;
         if (id < BASE_ID || id > BASE_ID + 200) return;
         e.setCanceled(true);
-        if (e.button == side) {
+        if (e.button == toggle) {
+            Config.setPanelHidden(!Config.panelHidden);
+            lastKey = null; // opened again: ask for the current pattern
+        } else if (e.button == side) {
             Config.setPanelSide(onRight ? "left" : "right");
             layoutHorizontal();
             relayout();
@@ -637,6 +670,7 @@ public class ClientPanel {
         for (GuiButton b : confRows) park(b);
         for (GuiButton b : extractButtons) park(b);
         park(bar);
+        placeToggle();
         park(side);
         park(hideFull);
         // Refresh NEI's slot mask right away when the panel appears, disappears, moves or resizes.
@@ -912,19 +946,19 @@ public class ClientPanel {
             if (!hasSuffix && fr.getStringWidth(e.name) > tw) {
                 // No caption: the long name gets the second line too.
                 List<String> lines = fr.listFormattedStringToWidth(e.name, tw);
-                fr.drawString(lines.get(0), tx, yPosition + 2, GUI_TEXT);
+                fr.drawString(lines.get(0), tx, yPosition + 4, GUI_TEXT);
                 String rest = e.name.substring(
                     Math.min(
                         e.name.length(),
                         lines.get(0)
                             .length()))
                     .trim();
-                fr.drawString(ellipsize(fr, rest, tw), tx, yPosition + 12, GUI_TEXT);
+                fr.drawString(ellipsize(fr, rest, tw), tx, yPosition + 14, GUI_TEXT);
             } else {
-                fr.drawString(ellipsize(fr, e.name, tw), tx, yPosition + 2, GUI_TEXT);
-                if (hasSuffix) fr.drawString(ellipsize(fr, e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
+                fr.drawString(ellipsize(fr, e.name, tw), tx, yPosition + 4, GUI_TEXT);
+                if (hasSuffix) fr.drawString(ellipsize(fr, e.suffix, tw), tx, yPosition + 14, GUI_TEXT_DIM);
             }
-            fr.drawString(ellipsize(fr, flagsLine(e, fr, tw), tw), tx, yPosition + 22, GUI_TEXT_DIM);
+            fr.drawString(ellipsize(fr, flagsLine(e, fr, tw), tw), tx, yPosition + 25, GUI_TEXT_DIM);
         }
     }
 
@@ -951,6 +985,95 @@ public class ClientPanel {
             barDragging = true;
             scrollToThumb(my - barGrab);
             return false; // no click sound, no action
+        }
+    }
+
+    /**
+     * The fold button goes under the last button of AE2's column next to the terminal, with AE2's own spacing; if that
+     * runs off the screen, under the outer column. AE2 lays the columns out by terminal size and screen, so this is
+     * worked out from where its buttons actually are.
+     */
+    private void placeToggle() {
+        if (toggle == null) return;
+        int left = field("guiLeft", "field_147003_i");
+        java.util.TreeMap<Integer, List<GuiButton>> columns = new java.util.TreeMap<>();
+        for (GuiButton b : guiButtons) {
+            if (b == null || !b.visible || (b.id >= BASE_ID && b.id <= BASE_ID + 200)) continue;
+            if (b.width > 22 || b.height > 22 || b.xPosition + b.width > left || b.xPosition < 0) continue;
+            columns.computeIfAbsent(b.xPosition, k -> new ArrayList<>())
+                .add(b);
+        }
+        toggle.visible = true;
+        for (Integer x : columns.descendingKeySet()) {
+            List<GuiButton> col = columns.get(x);
+            int bottom = Integer.MIN_VALUE, step = Integer.MAX_VALUE;
+            List<Integer> ys = new ArrayList<>();
+            for (GuiButton b : col) {
+                ys.add(b.yPosition);
+                bottom = Math.max(bottom, b.yPosition);
+            }
+            Collections.sort(ys);
+            for (int i = 1; i < ys.size(); i++) {
+                int d = ys.get(i) - ys.get(i - 1);
+                if (d > 0) step = Math.min(step, d);
+            }
+            if (step == Integer.MAX_VALUE) step = 20;
+            int y = bottom + step;
+            if (y + toggle.height <= gui.height - 2) {
+                toggle.xPosition = x;
+                toggle.yPosition = y;
+                return;
+            }
+        }
+        // No AE2 column found (another terminal look): just left of the terminal's top corner.
+        toggle.xPosition = Math.max(2, left - toggle.width - 2);
+        toggle.yPosition = field("guiTop", "field_147009_r") + 2;
+    }
+
+    /** AE2-style 16x16 image button: AE2's button background with an encoded pattern; greyed when folded. */
+    private class ToggleButton extends GuiButton {
+
+        private ItemStack icon;
+
+        ToggleButton(int id) {
+            super(id, 0, 0, 16, 16, "");
+        }
+
+        @Override
+        public void drawButton(Minecraft mc, int mx, int my) {
+            if (!visible) return;
+            GL11.glColor4f(1, 1, 1, 1);
+            try {
+                mc.getTextureManager()
+                    .bindTexture(
+                        new net.minecraft.util.ResourceLocation("appliedenergistics2", "textures/guis/states.png"));
+                GL11.glEnable(GL11.GL_BLEND);
+                drawTexturedModalRect(xPosition, yPosition, 240, 240, 16, 16);
+            } catch (Throwable t) {
+                drawRaised(xPosition, yPosition, 16, 16, GUI_FILL, false);
+            }
+            if (icon == null) icon = patternIcon();
+            GL11.glPushMatrix();
+            GL11.glTranslatef(xPosition + 2, yPosition + 2, 0);
+            GL11.glScalef(0.75f, 0.75f, 1);
+            drawItem(mc, icon, 0, 0);
+            GL11.glPopMatrix();
+            if (Config.panelHidden) drawRect(xPosition + 1, yPosition + 1, xPosition + 15, yPosition + 15, 0x90555555);
+            if (AeStyle.isOver(this, mx, my))
+                drawRect(xPosition + 1, yPosition + 1, xPosition + 15, yPosition + 15, 0x40FFFFFF);
+        }
+
+        private ItemStack patternIcon() {
+            try {
+                return appeng.api.AEApi.instance()
+                    .definitions()
+                    .items()
+                    .encodedPattern()
+                    .maybeStack(1)
+                    .orNull();
+            } catch (Throwable t) {
+                return null;
+            }
         }
     }
 
@@ -1019,9 +1142,9 @@ public class ClientPanel {
             drawItem(mc, e.icon, xPosition + 8, sy + 1);
             FontRenderer fr = mc.fontRenderer;
             int tx = xPosition + 29, tw = width - 29 - 60;
-            fr.drawString(ellipsize(fr, e.name, tw), tx, yPosition + 2, GUI_TEXT);
+            fr.drawString(ellipsize(fr, e.name, tw), tx, yPosition + 4, GUI_TEXT);
             if (e.suffix != null && !e.suffix.isEmpty()) {
-                fr.drawString(ellipsize(fr, e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
+                fr.drawString(ellipsize(fr, e.suffix, tw), tx, yPosition + 14, GUI_TEXT_DIM);
             }
         }
 

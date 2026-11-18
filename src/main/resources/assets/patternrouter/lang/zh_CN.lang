@@ -46,3 +46,6 @@ patternrouter.conflict.title.short=⚠ 已存在：%s
 patternrouter.tip.hidefull.off=隐藏已满的接口（扩容卡已装满）
 patternrouter.tip.hidefull.on=重新显示已满的接口
 patternrouter.note.allfull=所有适用的接口都已满：点击标题中的 ■ 以显示。
+patternrouter.tip.panel.title=Pattern Router 面板
+patternrouter.tip.panel.hide=点击收起面板
+patternrouter.tip.panel.show=点击显示面板

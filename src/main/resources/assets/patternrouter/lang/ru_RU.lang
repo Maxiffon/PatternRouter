@@ -46,3 +46,6 @@ patternrouter.conflict.title.short=⚠ Уже есть: %s
 patternrouter.tip.hidefull.off=Скрыть полные интерфейсы (все карты ёмкости уже стоят)
 patternrouter.tip.hidefull.on=Снова показывать полные интерфейсы
 patternrouter.note.allfull=Все подходящие интерфейсы полные: нажмите ■ в заголовке, чтобы их показать.
+patternrouter.tip.panel.title=Панель Pattern Router
+patternrouter.tip.panel.hide=Клик — свернуть панель
+patternrouter.tip.panel.show=Клик — показать панель

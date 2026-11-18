@@ -46,3 +46,6 @@ patternrouter.conflict.title.short=⚠ Already exists: %s
 patternrouter.tip.hidefull.off=Hide full interfaces (all capacity cards in)
 patternrouter.tip.hidefull.on=Show full interfaces again
 patternrouter.note.allfull=Every fitting interface is full: press ■ in the title to see them.
+patternrouter.tip.panel.title=Pattern Router panel
+patternrouter.tip.panel.hide=Click to fold the panel away
+patternrouter.tip.panel.show=Click to show the panel
