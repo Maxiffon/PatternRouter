@@ -202,6 +202,7 @@ public final class CandidateSearch {
                     if (!(node.getMachine() instanceof IInterfaceViewable listed)) continue;
                     IInterfaceViewable view = ProviderCompat.p2pInputOf(listed);
                     if (!seen.add(view) || !view.shouldDisplay() || !ProviderCompat.isActive(view, node)) continue;
+                    if (ProviderCompat.isUnlinkedP2P(view)) continue; // placed for later, feeds nothing yet
                     IInventory patterns = view.getPatterns();
                     if (patterns == null) continue;
                     try {

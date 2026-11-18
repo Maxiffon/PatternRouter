@@ -1,5 +1,7 @@
 package patternrouter.server.ae2;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 import net.minecraft.item.ItemStack;
@@ -92,6 +94,26 @@ public final class ProviderCompat {
             }
         } catch (Throwable ignored) {}
         return view;
+    }
+
+    /** The outputs of a P2P interface input (its patterns go out through them); empty for anything else. */
+    public static List<IInterfaceViewable> p2pOutputsOf(IInterfaceViewable view) {
+        List<IInterfaceViewable> outputs = new ArrayList<>();
+        try {
+            if (view instanceof PartP2PInterface p2p && !p2p.isOutput() && p2p.getFrequency() != 0) {
+                for (PartP2PInterface out : p2p.getOutputs()) if (out != null) outputs.add(out);
+            }
+        } catch (Throwable ignored) {}
+        return outputs;
+    }
+
+    /** A P2P interface with no frequency: placed for later, not linked to anything yet. */
+    public static boolean isUnlinkedP2P(IInterfaceViewable view) {
+        try {
+            return view instanceof PartP2PInterface p2p && p2p.getFrequency() == 0;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** Active in its network; {@code listed} is the node the provider was found by (a P2P output for an input). */

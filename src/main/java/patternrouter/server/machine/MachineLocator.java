@@ -29,6 +29,7 @@ import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
 import gregtech.api.recipe.RecipeMap;
 import patternrouter.PatternRouter;
 import patternrouter.server.ae2.GridAccess;
+import patternrouter.server.ae2.ProviderCompat;
 
 /** The GT machine behind a pattern provider: the blocks an interface feeds, subnets, the multiblock of a hatch. */
 public final class MachineLocator {
@@ -124,6 +125,15 @@ public final class MachineLocator {
     }
 
     private static List<TileEntity> findDeliveryTargets(IInterfaceViewable view) {
+        List<TileEntity> out = targetsAround(view);
+        // A P2P interface input sends its patterns out through its outputs: the machines sit next to them.
+        for (IInterfaceViewable output : ProviderCompat.p2pOutputsOf(view)) {
+            for (TileEntity t : targetsAround(output)) if (!out.contains(t)) out.add(t);
+        }
+        return out;
+    }
+
+    private static List<TileEntity> targetsAround(IInterfaceViewable view) {
         TileEntity self = view.getTileEntity();
         if (!(view instanceof IInterfaceHost host) || self == null) return new ArrayList<>();
         EnumSet<ForgeDirection> sides = host.getTargets();
