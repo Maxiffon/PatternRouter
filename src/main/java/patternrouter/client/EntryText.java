@@ -56,7 +56,9 @@ final class EntryText {
             e.reasonText = I18n.format(
                 e.has(ProviderEntry.NO_FLUIDS) ? "patternrouter.why.nofluid"
                     : e.has(ProviderEntry.OTHER_MODE) ? "patternrouter.why.othermode.any"
-                        : "patternrouter.why.othermold");
+                        // Anything else only a server that sends reasons can tell: an older one also marks missing
+                        // research this way.
+                        : e.reasonsSent ? "patternrouter.why.othermold" : "patternrouter.why.oldserver");
         }
     }
 

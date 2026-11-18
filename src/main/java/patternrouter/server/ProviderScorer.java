@@ -129,7 +129,14 @@ final class ProviderScorer {
         RecipeMap<?> assemblyLine = gregtech.api.recipe.RecipeMaps.assemblylineVisualRecipes;
         if (!modes.current.contains(assemblyLine) || (wanted != null && wanted != assemblyLine)) return;
         Boolean researched = AssemblyLineData.researched(modes.machines, contents.outputItem());
-        if (researched == null) return;
+        if (researched == null) {
+            // Sticks unreadable: GT's lookup "conflict" says nothing about an assembly line (lines share
+            // components), so don't claim a wrong circuit; the recipe kind matches.
+            if (s.has(ProviderEntry.SETUP_CONFLICTS) && !s.has(ProviderEntry.OTHER_MODE)) {
+                s.flags &= ~ProviderEntry.SETUP_CONFLICTS;
+            }
+            return;
+        }
         // No NEI tab: an unresearched line still counts when GT's lookup found the pattern among assembly line
         // recipes. That lookup's "conflict" means nothing here: many lines share components (hatches of each tier),
         // the line runs only what its sticks hold.

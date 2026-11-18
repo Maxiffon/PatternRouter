@@ -62,3 +62,4 @@ patternrouter.why.nofluid=В шаблоне есть жидкости, а это
 patternrouter.why.othermold=Из-за схемы/формы/линзы в машине GT запустит другой рецепт
 patternrouter.search.hint=Поиск…
 patternrouter.note.nomatch=По запросу ничего не найдено.
+patternrouter.why.oldserver=На сервере старая версия Pattern Router, она не сообщает причину. Обнови мод на сервере.

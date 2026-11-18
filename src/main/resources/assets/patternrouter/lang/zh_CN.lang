@@ -62,3 +62,4 @@ patternrouter.why.nofluid=样板含有流体，但此接口无法输出流体
 patternrouter.why.othermold=机器中的电路/模具/透镜会让 GT 启动另一个配方
 patternrouter.search.hint=搜索…
 patternrouter.note.nomatch=没有符合搜索的接口。
+patternrouter.why.oldserver=服务器上的 Pattern Router 版本较旧，不提供原因。请更新服务器上的模组。

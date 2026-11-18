@@ -62,3 +62,4 @@ patternrouter.why.nofluid=The pattern has fluids, but this provider can't push f
 patternrouter.why.othermold=The machine's circuit/mold/lens makes GT start another recipe
 patternrouter.search.hint=Search…
 patternrouter.note.nomatch=No interface matches the search.
+patternrouter.why.oldserver=The server has an older Pattern Router and doesn't say why. Update the mod on the server.

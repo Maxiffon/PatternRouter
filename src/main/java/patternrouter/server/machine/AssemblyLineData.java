@@ -56,14 +56,18 @@ public final class AssemblyLineData {
 
     /** The same places GT's checkProcessing reads: the stick in the controller slot, then the data hatches. */
     private static RecipeAssemblyLine recipeOf(MTEAssemblyLine line, ItemStack output) {
-        ItemStack controllerStick = line.getStackInSlot(1);
-        if (AssemblyLineUtils.isItemDataStick(controllerStick)) {
-            Collection<RecipeAssemblyLine> fromStick = AssemblyLineUtils.findALRecipeFromDataStick(controllerStick);
-            if (fromStick != null) {
-                for (RecipeAssemblyLine r : fromStick) {
-                    if (r != null && r.mOutput != null && r.mOutput.isItemEqual(output)) return r;
+        try {
+            ItemStack controllerStick = line.getStackInSlot(1);
+            if (AssemblyLineUtils.isItemDataStick(controllerStick)) {
+                Collection<RecipeAssemblyLine> fromStick = AssemblyLineUtils.findALRecipeFromDataStick(controllerStick);
+                if (fromStick != null) {
+                    for (RecipeAssemblyLine r : fromStick) {
+                        if (r != null && r.mOutput != null && r.mOutput.isItemEqual(output)) return r;
+                    }
                 }
             }
+        } catch (Throwable ignored) {
+            // The controller stick can't be read: the hatches still can.
         }
         for (MTEHatchDataAccess hatch : line.mDataAccessHatches) {
             if (hatch == null || !hatch.isValid()) continue;

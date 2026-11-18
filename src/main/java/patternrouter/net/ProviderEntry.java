@@ -42,6 +42,8 @@ public class ProviderEntry {
     public String reason = "";
     /** Client side: the reason as text in the player's language, and the short flag key for the row. */
     public String reasonText = "", reasonFlag;
+    /** Client side: the server sends reasons at all (1.4+); an older one leaves {@link #reason} empty for all rows. */
+    public boolean reasonsSent;
     public int flags;
     /** Provider position, for highlighting it in the world. */
     public int dim, x, y, z;

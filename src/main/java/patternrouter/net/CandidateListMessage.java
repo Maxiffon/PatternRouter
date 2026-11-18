@@ -40,6 +40,7 @@ public class CandidateListMessage implements IMessage {
         }
         // Added after takesCard: why a row doesn't fit.
         if (buf.isReadable()) {
+            for (ProviderEntry e : entries) e.reasonsSent = true;
             int n = buf.readUnsignedByte();
             for (int i = 0; i < n && buf.isReadable(); i++) {
                 String reason = ByteBufUtils.readUTF8String(buf);
