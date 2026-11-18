@@ -78,6 +78,7 @@ public final class MachineLocator {
             Collection<RecipeMap<?>> available = workable.getAvailableRecipeMaps();
             if (!available.isEmpty()) {
                 into.add(available, currentRecipeMap(workable));
+                if (!into.machines.contains(mte)) into.machines.add(mte);
                 return;
             }
         }

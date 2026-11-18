@@ -19,6 +19,7 @@ import patternrouter.common.Items;
 import patternrouter.net.ProviderEntry;
 import patternrouter.server.ae2.Patterns;
 import patternrouter.server.ae2.ProviderCompat;
+import patternrouter.server.machine.AssemblyLineData;
 import patternrouter.server.machine.MachineDiagnostics;
 import patternrouter.server.machine.MachineInventory;
 import patternrouter.server.machine.MachineLocator;
@@ -75,7 +76,22 @@ final class ProviderScorer {
         if (!s.has(ProviderEntry.RECIPE_MATCH) && fitsOtherMode(modes.otherModes, wanted, contents, machine)) {
             s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS | ProviderEntry.OTHER_MODE;
         }
+        scoreAssemblyLineResearch(s, modes, wanted, contents);
         return s;
+    }
+
+    /**
+     * GT can't look assembly line recipes up; the data sticks the line reads (data access hatches, optical data
+     * input) tell whether it can run this one. Without an NEI tab only a researched line counts as a match.
+     */
+    private static void scoreAssemblyLineResearch(ProviderScore s, MachineModes modes, RecipeMap<?> wanted,
+        PatternContents contents) {
+        RecipeMap<?> assemblyLine = gregtech.api.recipe.RecipeMaps.assemblylineVisualRecipes;
+        if (!modes.current.contains(assemblyLine) || (wanted != null && wanted != assemblyLine)) return;
+        Boolean researched = AssemblyLineData.researched(modes.machines, contents.outputItem());
+        if (researched == null || (wanted == null && !researched)) return;
+        s.flags &= ~(ProviderEntry.SETUP_FITS | ProviderEntry.SETUP_CONFLICTS);
+        s.flags |= ProviderEntry.RECIPE_MATCH | (researched ? ProviderEntry.SETUP_FITS : ProviderEntry.SETUP_CONFLICTS);
     }
 
     /** The pattern is a recipe of a mode the machine is not set to (Precise Assembler set to plain assembling). */

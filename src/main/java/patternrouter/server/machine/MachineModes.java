@@ -1,9 +1,12 @@
 package patternrouter.server.machine;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
+import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.recipe.RecipeMap;
 
 /**
@@ -16,6 +19,8 @@ public final class MachineModes {
     public final Set<RecipeMap<?>> current = new HashSet<>();
     /** Maps of modes the machines are not set to: the player has to switch the mode first. */
     public final Set<RecipeMap<?>> otherModes = new HashSet<>();
+    /** The machines themselves (multiblock controllers, single-block machines). */
+    public final List<IMetaTileEntity> machines = new ArrayList<>();
 
     /** A machine's maps; {@code now} is what its current mode runs, null for machines without modes. */
     void add(Collection<RecipeMap<?>> available, RecipeMap<?> now) {
