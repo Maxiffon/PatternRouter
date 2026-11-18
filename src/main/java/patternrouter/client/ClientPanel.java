@@ -1,5 +1,19 @@
 package patternrouter.client;
 
+import static patternrouter.client.AeStyle.GUI_FILL;
+import static patternrouter.client.AeStyle.GUI_TEXT;
+import static patternrouter.client.AeStyle.GUI_TEXT_BAD;
+import static patternrouter.client.AeStyle.GUI_TEXT_DIM;
+import static patternrouter.client.AeStyle.drawInset;
+import static patternrouter.client.AeStyle.drawItem;
+import static patternrouter.client.AeStyle.drawRaised;
+import static patternrouter.client.AeStyle.drawShadow;
+import static patternrouter.client.AeStyle.drawSlot;
+import static patternrouter.client.AeStyle.drawWindow;
+import static patternrouter.client.EntryText.displayName;
+import static patternrouter.client.EntryText.flagsLine;
+import static patternrouter.client.EntryText.resolveName;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -8,23 +22,16 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
-import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.inventory.GuiContainer;
-import net.minecraft.client.renderer.RenderHelper;
-import net.minecraft.client.renderer.entity.RenderItem;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.IChatComponent;
-import net.minecraft.util.StatCollector;
 import net.minecraftforge.client.event.GuiScreenEvent;
 
 import org.lwjgl.input.Mouse;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
 
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.container.slot.SlotFake;
@@ -35,7 +42,6 @@ import cpw.mods.fml.common.ObfuscationReflectionHelper;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import patternrouter.Config;
-import patternrouter.common.Items;
 import patternrouter.common.ListNote;
 import patternrouter.net.ActionResultMessage;
 import patternrouter.net.CandidateListMessage;
@@ -75,12 +81,6 @@ public class ClientPanel {
     }
 
     private static final int BASE_ID = 0x6A5000;
-    private static final RenderItem ITEM_RENDER = new RenderItem();
-
-    private static final int GUI_FILL = 0xFFC6C6C6;
-    private static final int GUI_TEXT = 0x404040;
-    private static final int GUI_TEXT_DIM = 0x5A5A5A;
-    private static final int GUI_TEXT_BAD = 0x9A1010;
 
     private final Queue<Runnable> tasks = new ConcurrentLinkedQueue<>();
 
@@ -250,22 +250,15 @@ public class ClientPanel {
             }
         }
         for (int i = 0; i < extractButtons.size(); i++) {
-            GuiButton x = extractButtons.get(i);
-            if (x.visible && e.mouseX >= x.xPosition
-                && e.mouseY >= x.yPosition
-                && e.mouseX < x.xPosition + x.width
-                && e.mouseY < x.yPosition + x.height) {
+            GuiButton extract = extractButtons.get(i);
+            if (extract.visible && AeStyle.isOver(extract, e.mouseX, e.mouseY)) {
                 List<String> tip = new ArrayList<>();
                 tip.add(displayName(conflicts.get(i)));
                 tip.add("§7" + I18n.format("patternrouter.tip.extract"));
                 drawTooltip(tip, e.mouseX, e.mouseY);
             }
         }
-        if (side != null && side.visible
-            && e.mouseX >= side.xPosition
-            && e.mouseY >= side.yPosition
-            && e.mouseX < side.xPosition + side.width
-            && e.mouseY < side.yPosition + side.height) {
+        if (side != null && side.visible && AeStyle.isOver(side, e.mouseX, e.mouseY)) {
             drawTooltip(
                 Collections.singletonList(
                     I18n.format(onRight ? "patternrouter.tip.side.left" : "patternrouter.tip.side.right")),
@@ -329,8 +322,8 @@ public class ClientPanel {
 
     public void onCandidates(CandidateListMessage msg) {
         if (gui == null || sendAt >= 0) return; // the pattern changed since; its own request is about to go out
-        for (ProviderEntry e : msg.entries) prepare(e);
-        for (ProviderEntry e : msg.conflicts) prepare(e);
+        for (ProviderEntry e : msg.entries) EntryText.localize(e);
+        for (ProviderEntry e : msg.conflicts) EntryText.localize(e);
         token = msg.token;
         entries = msg.entries;
         conflicts = msg.conflicts;
@@ -629,109 +622,6 @@ public class ClientPanel {
         statusUntil = System.currentTimeMillis() + ms;
     }
 
-    private static void prepare(ProviderEntry e) {
-        e.name = resolveName(e.name, e.icon);
-        e.suffix = parseSuffix(e.suffix);
-        if (e.suffix.isEmpty() && !e.setupItems.isEmpty()) e.suffix = setupCaption(e.setupItems);
-    }
-
-    /**
-     * "{[5], Mold (Ingot)}" from the items the machine is set up with. Names come from the item itself, as in
-     * tooltips: GT translates its items through its own language manager, not plain translation keys.
-     */
-    private static String setupCaption(List<ItemStack> config) {
-        StringBuilder b = new StringBuilder("{");
-        for (ItemStack st : config) {
-            if (b.length() > 1) b.append(", ");
-            String n;
-            try {
-                n = Items.isProgrammedCircuit(st) ? "[" + st.getItemDamage() + "]" : st.getDisplayName();
-            } catch (Throwable t) {
-                n = "?";
-            }
-            b.append(n);
-        }
-        return b.append("}")
-            .toString();
-    }
-
-    private static String translate(String raw) {
-        if (raw == null) return "";
-        if (StatCollector.canTranslate(raw)) return StatCollector.translateToLocal(raw);
-        if (StatCollector.canTranslate(raw + ".name")) return StatCollector.translateToLocal(raw + ".name");
-        return raw;
-    }
-
-    /**
-     * Display name. The server sends the raw name: a player rename or the machine translation key (GT keys lack
-     * ".name", e.g. gt.blockmachines.industrialextruder). If the key does not translate, use the icon item name.
-     */
-    private static String resolveName(String raw, ItemStack icon) {
-        String t = translate(raw);
-        boolean looksLikeKey = t.equals(raw) && raw.indexOf(' ') < 0 && raw.indexOf('.') > 0;
-        if (looksLikeKey && icon != null) {
-            try {
-                return icon.getDisplayName();
-            } catch (Throwable ignored) {}
-        }
-        return t;
-    }
-
-    /** The CRIB caption (mold, circuit, number) arrives as JSON and is translated client-side. */
-    private static String parseSuffix(String json) {
-        if (json == null || json.isEmpty()) return "";
-        try {
-            IChatComponent c = IChatComponent.Serializer.func_150699_a(json);
-            return c == null ? ""
-                : c.getFormattedText()
-                    .trim();
-        } catch (Throwable t) {
-            return json;
-        }
-    }
-
-    private static String displayName(ProviderEntry e) {
-        return e.suffix == null || e.suffix.isEmpty() ? e.name : e.name + " " + e.suffix;
-    }
-
-    /** Flags line: dark colors in the list (light AE2 background), bright ones in tooltips (dark background). */
-    private static String flagsLine(ProviderEntry e, boolean tooltip) {
-        String good = tooltip ? "§a" : "§2", bad = tooltip ? "§c" : "§4", warn = tooltip ? "§e" : "§6",
-            dim = tooltip ? "§7" : "§8";
-        StringBuilder sb = new StringBuilder();
-        if ((e.flags & ProviderEntry.REMEMBERED) != 0) sb.append(warn)
-            .append("★ ")
-            .append(I18n.format("patternrouter.flag.remembered"))
-            .append("  ");
-        if ((e.flags & ProviderEntry.SETUP_FITS) != 0) sb.append(good)
-            .append("✔ ")
-            .append(I18n.format("patternrouter.flag.mold"))
-            .append("  ");
-        else if ((e.flags & ProviderEntry.SETUP_CONFLICTS) != 0) sb.append(bad)
-            .append("✘ ")
-            .append(
-                I18n.format(
-                    (e.flags & ProviderEntry.NO_FLUIDS) != 0 ? "patternrouter.flag.nofluid"
-                        : "patternrouter.flag.othermold"))
-            .append("  ");
-        else if ((e.flags & ProviderEntry.BY_NAME) != 0) sb.append(warn)
-            .append("≈ ")
-            .append(I18n.format("patternrouter.flag.byname"))
-            .append("  ");
-        else if ((e.flags & ProviderEntry.RECIPE_MATCH) != 0) sb.append(good)
-            .append("✔ ")
-            .append(I18n.format("patternrouter.flag.machine"))
-            .append("  ");
-        if ((e.flags & ProviderEntry.HAS_SAME_OUTPUT) != 0) sb.append(warn)
-            .append(I18n.format("patternrouter.flag.same"))
-            .append("  ");
-        if (e.freeSlots == 0) sb.append(bad)
-            .append(I18n.format("patternrouter.flag.full"));
-        else sb.append(dim)
-            .append(I18n.format(tooltip ? "patternrouter.flag.free.long" : "patternrouter.flag.free", e.freeSlots));
-        return sb.toString();
-    }
-
     private String noteText() {
         if (waiting && requestSentAt > 0 && System.currentTimeMillis() - requestSentAt > REPLY_TIMEOUT_MS) {
             return I18n.format("patternrouter.note.noreply");
@@ -759,116 +649,9 @@ public class ClientPanel {
         }
     }
 
-    // ------------------------------------------------------------------ AE2-style drawing (Minecraft window)
-
-    /** AE2-style window: black outline, light bevel top-left, dark bevel bottom-right. */
-    private static void drawWindow(int x, int y, int w, int h) {
-        Gui.drawRect(x + 1, y, x + w - 1, y + 1, 0xFF000000);
-        Gui.drawRect(x + 1, y + h - 1, x + w - 1, y + h, 0xFF000000);
-        Gui.drawRect(x, y + 1, x + 1, y + h - 1, 0xFF000000);
-        Gui.drawRect(x + w - 1, y + 1, x + w, y + h - 1, 0xFF000000);
-        Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, GUI_FILL);
-        Gui.drawRect(x + 1, y + 1, x + w - 3, y + 3, 0xFFFFFFFF);
-        Gui.drawRect(x + 1, y + 1, x + 3, y + h - 3, 0xFFFFFFFF);
-        Gui.drawRect(x + 3, y + h - 3, x + w - 1, y + h - 1, 0xFF555555);
-        Gui.drawRect(x + w - 3, y + 3, x + w - 1, y + h - 1, 0xFF555555);
-    }
-
-    /** Inset area (like the slot area of a terminal). */
-    private static void drawInset(int x, int y, int w, int h) {
-        Gui.drawRect(x, y, x + w, y + h, 0xFF8B8B8B);
-        Gui.drawRect(x, y, x + w, y + 1, 0xFF373737);
-        Gui.drawRect(x, y, x + 1, y + h, 0xFF373737);
-        Gui.drawRect(x + 1, y + h - 1, x + w, y + h, 0xFFFFFFFF);
-        Gui.drawRect(x + w - 1, y + 1, x + w, y + h, 0xFFFFFFFF);
-    }
-
-    /** Raised tile: light bevel top-left, shadow bottom-right; inverted when pressed. */
-    private static void drawRaised(int x, int y, int w, int h, int fill, boolean pressed) {
-        int hi = pressed ? 0xFF555555 : 0xFFFFFFFF;
-        int lo = pressed ? 0xFFFFFFFF : 0xFF555555;
-        Gui.drawRect(x, y, x + w, y + h, 0xFF373737);
-        Gui.drawRect(x + 1, y + 1, x + w - 1, y + h - 1, fill);
-        Gui.drawRect(x + 1, y + 1, x + w - 2, y + 2, hi);
-        Gui.drawRect(x + 1, y + 1, x + 2, y + h - 2, hi);
-        Gui.drawRect(x + 2, y + h - 2, x + w - 1, y + h - 1, lo);
-        Gui.drawRect(x + w - 2, y + 2, x + w - 1, y + h - 1, lo);
-    }
-
-    /**
-     * Button in the panel's own style. Vanilla buttons draw a 20 px tall texture and lose their bottom edge when
-     * shorter; this one draws a full bevel at any size, lighter on hover, flat and dim when disabled, pressed look
-     * while the mouse is held on it.
-     */
-    private static final class PanelButton extends GuiButton {
-
-        PanelButton(int id, int w, int h, String text) {
-            super(id, 0, 0, w, h, text);
-        }
-
-        @Override
-        public void drawButton(Minecraft mc, int mx, int my) {
-            if (!visible) return;
-            boolean hover = mx >= xPosition && my >= yPosition && mx < xPosition + width && my < yPosition + height;
-            field_146123_n = hover;
-            boolean pressed = hover && enabled && Mouse.isButtonDown(0);
-            int fill = !enabled ? 0xFFA8A8A8 : hover ? 0xFFDCDCF0 : 0xFFC6C6C6;
-            if (enabled) drawRaised(xPosition, yPosition, width, height, fill, pressed);
-            else {
-                Gui.drawRect(xPosition, yPosition, xPosition + width, yPosition + height, 0xFF6E6E6E);
-                Gui.drawRect(xPosition + 1, yPosition + 1, xPosition + width - 1, yPosition + height - 1, fill);
-            }
-            FontRenderer fr = mc.fontRenderer;
-            String s = fr.trimStringToWidth(displayString, width - 4);
-            int color = !enabled ? 0x7A7A7A : hover ? 0x1E1E8C : GUI_TEXT;
-            int off = pressed ? 1 : 0;
-            fr.drawString(
-                s,
-                xPosition + (width - fr.getStringWidth(s)) / 2 + off,
-                yPosition + (height - 8) / 2 + off,
-                color);
-        }
-    }
-
-    /** Soft drop shadow so the panel floats above the screen. */
-    private static void drawShadow(int x, int y, int w, int h) {
-        Gui.drawRect(x + 4, y + h, x + w + 2, y + h + 3, 0x50000000);
-        Gui.drawRect(x + w, y + 4, x + w + 3, y + h + 3, 0x50000000);
-        Gui.drawRect(x + 3, y + h, x + w + 1, y + h + 1, 0x30000000);
-    }
-
-    /** Inset 18x18 slot like AE2 cells. */
-    private static void drawSlot(int x, int y) {
-        Gui.drawRect(x, y, x + 18, y + 18, 0xFF373737);
-        Gui.drawRect(x + 1, y + 1, x + 18, y + 18, 0xFFFFFFFF);
-        Gui.drawRect(x + 1, y + 1, x + 17, y + 17, 0xFF8B8B8B);
-    }
-
-    private static void drawItem(Minecraft mc, ItemStack stack, int x, int y) {
-        if (stack == null) return;
-        GL11.glPushMatrix();
-        RenderHelper.enableGUIStandardItemLighting();
-        GL11.glEnable(GL12.GL_RESCALE_NORMAL);
-        ITEM_RENDER.renderItemAndEffectIntoGUI(mc.fontRenderer, mc.getTextureManager(), stack, x, y);
-        RenderHelper.disableStandardItemLighting();
-        GL11.glDisable(GL11.GL_LIGHTING);
-        GL11.glPopMatrix();
-    }
-
     private void drawTooltip(List<String> lines, int x, int y) {
-        FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
-        int w = 0;
-        for (String l : lines) w = Math.max(w, fr.getStringWidth(l));
-        int tx = x + 12, ty = y - 12, h = lines.size() * 10 + 2;
-        if (tx + w + 6 > gui.width) tx = x - w - 16;
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        Gui.drawRect(tx - 3, ty - 3, tx + w + 3, ty + h, 0xF0100010);
-        Gui.drawRect(tx - 3, ty - 3, tx + w + 3, ty - 2, 0xFF5000FF);
-        for (int i = 0; i < lines.size(); i++) fr.drawStringWithShadow(lines.get(i), tx, ty + i * 10, 0xFFFFFF);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        AeStyle.drawTooltip(lines, x, y, gui.width);
     }
-
-    // ------------------------------------------------------------------ buttons
 
     /** Panel window, title, note, conflict header, status line. Drawn first. */
     private class Background extends GuiButton {
@@ -940,10 +723,7 @@ public class ClientPanel {
                 && mx < xPosition + width
                 && my >= yPosition
                 && my < yPosition + HEADER;
-            boolean onArrow = side != null && mx >= side.xPosition
-                && mx < side.xPosition + side.width
-                && my >= side.yPosition
-                && my < side.yPosition + side.height;
+            boolean onArrow = side != null && AeStyle.isOver(side, mx, my);
             if (inTitle && !onArrow) {
                 dragging = true;
                 dragDX = mx - px;
@@ -964,7 +744,7 @@ public class ClientPanel {
         }
 
         boolean hovered(int mx, int my) {
-            return mx >= xPosition && my >= yPosition && mx < xPosition + width && my < yPosition + height;
+            return AeStyle.isOver(this, mx, my);
         }
 
         @Override
