@@ -97,10 +97,13 @@ public final class Candidates {
         final List<Conflict> conflicts;
         /** What is being placed (see choiceKey), remembered on upload. */
         final String key;
+        /** The pattern the list was built for; an upload of anything else is refused. */
+        final ItemStack pattern;
 
-        Session(int token, Container container, List<WeakReference<IInterfaceViewable>> targets,
+        Session(int token, Container container, ItemStack pattern, List<WeakReference<IInterfaceViewable>> targets,
             List<Conflict> conflicts, String key) {
             this.key = key;
+            this.pattern = pattern.copy();
             this.token = token;
             this.container = new WeakReference<>(container);
             this.targets = targets;
@@ -294,7 +297,8 @@ public final class Candidates {
                 refs.add(new WeakReference<>(s.view));
                 reply.entries.add(s.toEntry());
             }
-            if (!bench) SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, refs, conflicts, key));
+            if (!bench)
+                SESSIONS.put(player.getUniqueID(), new Session(reply.token, term, pattern, refs, conflicts, key));
         }
         return reply;
     }
@@ -931,6 +935,11 @@ public final class Candidates {
         ItemStack pattern = patternInv == null ? null : patternInv.getStackInSlot(1);
         if (pattern == null || !(pattern.getItem() instanceof ItemEncodedPattern)) {
             Net.CH.sendTo(new Net.Result(Net.Result.NO_PATTERN, rawName(view)), player);
+            return;
+        }
+        // The list was made for another pattern (re-encoded since, or changed by another player at this terminal).
+        if (!sameItem(pattern, session.pattern)) {
+            Net.CH.sendTo(new Net.Result(Net.Result.GONE, ""), player);
             return;
         }
         int slot = freeSlot(view, pattern);
