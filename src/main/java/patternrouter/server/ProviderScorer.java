@@ -2,6 +2,7 @@ package patternrouter.server;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -134,10 +135,26 @@ final class ProviderScorer {
             s.hasSpareSetup = fit == RecipeFit.WITH_SPARE_SETUP;
         } else if (fit == RecipeFit.CONFLICTING) {
             s.flags |= ProviderEntry.SETUP_CONFLICTS;
-        } else if (!nonConsumables.isEmpty()) {
-            // GT lookup failed (e.g. odd pattern amounts): fall back to the items NEI marked as not consumed.
-            s.flags |= holdsAll(machine, nonConsumables) ? ProviderEntry.SETUP_FITS : ProviderEntry.SETUP_CONFLICTS;
+        } else {
+            // GT lookup failed (odd pattern amounts, or the assembly line, whose recipe comes from a data stick):
+            // fall back to the items NEI marked as not consumed that this machine keeps in its inputs.
+            List<ItemStack> setup = inputSetup(nonConsumables, wanted);
+            if (!setup.isEmpty()) {
+                s.flags |= holdsAll(machine, setup) ? ProviderEntry.SETUP_FITS : ProviderEntry.SETUP_CONFLICTS;
+            }
         }
+    }
+
+    /**
+     * Circuits, molds and lenses among NEI's non-consumables: things recipes of the map take from the input buses.
+     * The assembly line's data stick sits in a data hatch the provider never sees.
+     */
+    private static List<ItemStack> inputSetup(List<ItemStack> nonConsumables, RecipeMap<?> map) {
+        List<ItemStack> setup = new ArrayList<>();
+        for (ItemStack st : nonConsumables) {
+            if (RecipeMaps.isNonConsumable(st, Collections.singletonList(map))) setup.add(st);
+        }
+        return setup;
     }
 
     private static boolean holdsAll(MachineInventory machine, List<ItemStack> needed) {
