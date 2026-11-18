@@ -143,6 +143,12 @@ public final class MachineLocator {
         for (ForgeDirection side : sides) {
             TileEntity te = Worlds.neighbour(self, side);
             if (te == null) continue;
+            TileEntity behind = Redirects.follow(te);
+            if (behind != te) {
+                // A transvector or relay: the machine is the block it passes the items on to.
+                if (behind != null && !out.contains(behind)) out.add(behind);
+                continue;
+            }
             out.add(te);
             if (te instanceof IGregTechTileEntity || !(te instanceof IGridHost gridHost)) continue;
             IGrid sub = null;
@@ -207,13 +213,13 @@ public final class MachineLocator {
                     TileEntity host = part.getTile();
                     ForgeDirection side = part.getSide();
                     if (host != null && side != null && side != ForgeDirection.UNKNOWN) {
-                        addMachineInput(out, Worlds.neighbour(host, side));
+                        addMachineInput(out, Redirects.follow(Worlds.neighbour(host, side)));
                     }
                 } else if (machine instanceof IInterfaceHost host && machine instanceof TileEntity te) {
                     EnumSet<ForgeDirection> sides = host.getTargets();
                     if (sides == null) continue;
                     for (ForgeDirection side : sides) {
-                        TileEntity t = Worlds.neighbour(te, side);
+                        TileEntity t = Redirects.follow(Worlds.neighbour(te, side));
                         if (t != null) addMachineInput(out, t);
                     }
                 }
