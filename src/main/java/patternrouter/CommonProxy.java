@@ -6,12 +6,15 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.world.WorldEvent;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import patternrouter.server.Bench;
+import patternrouter.server.Candidates;
 
 public class CommonProxy {
 
@@ -19,6 +22,16 @@ public class CommonProxy {
         FMLCommonHandler.instance()
             .bus()
             .register(this);
+        MinecraftForge.EVENT_BUS.register(new WorldEvents());
+    }
+
+    /** Forge-bus events (the proxy itself listens on the FML bus). */
+    public static final class WorldEvents {
+
+        @SubscribeEvent
+        public void onWorldUnload(WorldEvent.Unload event) {
+            if (!event.world.isRemote) Candidates.onWorldUnload(event.world);
+        }
     }
 
     /** Client only: candidate list received. */
@@ -67,6 +80,7 @@ public class CommonProxy {
     @SubscribeEvent
     public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.player instanceof EntityPlayerMP) Bench.onLogout((EntityPlayerMP) event.player);
+        Candidates.forget(event.player.getUniqueID());
     }
 
     private static final long SLOW_TASK_MS = 2000;

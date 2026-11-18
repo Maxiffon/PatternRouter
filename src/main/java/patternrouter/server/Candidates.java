@@ -184,6 +184,35 @@ public final class Candidates {
      */
     static Net.CandidateList buildReply(EntityPlayerMP player, String category, List<ItemStack> nonConsumables,
         String machineName, boolean bench) {
+        try {
+            return lookup(player, category, nonConsumables, machineName, bench);
+        } finally {
+            forgetRequestState();
+        }
+    }
+
+    /** Request caches hold tiles, grids and stacks: drop them so nothing of a world outlives the request. */
+    private static void forgetRequestState() {
+        CAN_MAKE.clear();
+        SUBNETS.clear();
+        TARGETS.clear();
+        lookupGrids = Collections.emptyList();
+        PatternContents.forget();
+    }
+
+    /** The player left: drop their list and bench replay. */
+    public static void forget(UUID player) {
+        SESSIONS.remove(player);
+        LAST_REQUEST.remove(player);
+    }
+
+    /** A world unloads (also leaving a single player world): drop what is cached about it. */
+    public static void onWorldUnload(World world) {
+        Owners.forget(world);
+    }
+
+    private static Net.CandidateList lookup(EntityPlayerMP player, String category, List<ItemStack> nonConsumables,
+        String machineName, boolean bench) {
         Net.CandidateList reply = new Net.CandidateList();
         reply.token = nextToken++;
         ContainerPatternTerm term = null;
@@ -438,9 +467,6 @@ public final class Candidates {
         // Pattern inputs/output for the GT recipe lookup (with or without the NEI category).
         PatternContents contents = PatternContents.of(pattern, world);
         List<Scored> out = new ArrayList<>();
-        CAN_MAKE.clear();
-        SUBNETS.clear();
-        TARGETS.clear();
         Set<IInterfaceViewable> seen = new HashSet<>();
         // The terminal's network plus networks linked by Pattern Repeaters where the player may build.
         List<IGrid> grids = new ArrayList<>();
@@ -704,6 +730,11 @@ public final class Candidates {
         /** The terminal's pattern is decoded several times per request; decoding a crafting pattern is slow. */
         private static ItemStack lastPattern;
         private static PatternContents lastContents;
+
+        static void forget() {
+            lastPattern = null;
+            lastContents = null;
+        }
 
         static PatternContents of(ItemStack pattern, World world) {
             if (pattern != null && pattern == lastPattern && lastContents != null) return lastContents;

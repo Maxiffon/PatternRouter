@@ -3,6 +3,8 @@ package patternrouter.server;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,6 +25,8 @@ public final class Choices extends WorldSavedData {
     private static final String NAME = "patternrouter_choices";
     /** Remembered providers per key, most recent first. */
     private static final int PER_KEY = 3;
+    /** Kinds of patterns remembered per player; keeps the save small whatever a client sends. */
+    private static final int MAX_KINDS_PER_PLAYER = 1000;
 
     /** player -> key -> positions {dim, x, y, z}. */
     private final Map<UUID, Map<String, List<int[]>>> data = new HashMap<>();
@@ -50,11 +54,20 @@ public final class Choices extends WorldSavedData {
     }
 
     void remember(UUID player, String key, int[] pos) {
-        List<int[]> l = data.computeIfAbsent(player, p -> new HashMap<>())
-            .computeIfAbsent(key, k -> new ArrayList<>());
+        Map<String, List<int[]>> kinds = data.computeIfAbsent(player, p -> new LinkedHashMap<>());
+        // Most recently used kind last; beyond the cap the longest unused ones are forgotten.
+        List<int[]> l = kinds.remove(key);
+        if (l == null) l = new ArrayList<>();
+        kinds.put(key, l);
         l.removeIf(p -> same(p, pos));
         l.add(0, pos);
         while (l.size() > PER_KEY) l.remove(l.size() - 1);
+        Iterator<String> oldest = kinds.keySet()
+            .iterator();
+        while (kinds.size() > MAX_KINDS_PER_PLAYER && oldest.hasNext()) {
+            oldest.next();
+            oldest.remove();
+        }
         markDirty();
     }
 
@@ -74,7 +87,7 @@ public final class Choices extends WorldSavedData {
             } catch (IllegalArgumentException e) {
                 continue;
             }
-            Map<String, List<int[]>> m = new HashMap<>();
+            Map<String, List<int[]>> m = new LinkedHashMap<>();
             NBTTagList entries = p.getTagList("entries", 10);
             for (int j = 0; j < entries.tagCount(); j++) {
                 NBTTagCompound e = entries.getCompoundTagAt(j);
