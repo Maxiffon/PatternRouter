@@ -15,21 +15,21 @@ import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.helpers.IInterfaceHost;
 import appeng.util.item.AEItemStack;
-import patternrouter.Net;
 import patternrouter.PatternRouter;
+import patternrouter.net.ActionResultMessage;
 import patternrouter.server.ae2.GridAccess;
 import patternrouter.server.ae2.ProviderCompat;
 
 /** Installs a Pattern Capacity Card into a full AE2 interface: from the player's inventory, else from the network. */
 final class CapacityCards {
 
-    /** {@link #install} succeeded; any other value is a Net.Result code. */
+    /** {@link #install} succeeded; any other value is an ActionResultMessage code. */
     static final int INSTALLED = -1;
 
     private CapacityCards() {}
 
     static int install(IInterfaceViewable view, IGrid grid, ContainerPatternTerm term, EntityPlayerMP player) {
-        if (!(view instanceof IInterfaceHost host)) return Net.Result.FULL; // CRIB, LMA: no upgrade slots
+        if (!(view instanceof IInterfaceHost host)) return ActionResultMessage.FULL; // CRIB, LMA: no upgrade slots
         try {
             IInventory upgrades = host.getInterfaceDuality()
                 .getInventoryByName("upgrades");
@@ -39,11 +39,11 @@ final class CapacityCards {
                 .cardPatternCapacity()
                 .maybeStack(1)
                 .orNull();
-            if (upgrades == null || card == null) return Net.Result.FULL;
+            if (upgrades == null || card == null) return ActionResultMessage.FULL;
             int slot = freeUpgradeSlot(upgrades, card);
-            if (slot < 0) return Net.Result.MAX_CARDS;
+            if (slot < 0) return ActionResultMessage.MAX_CARDS;
             if (!takeFromPlayer(player, card) && !takeFromNetwork(grid, term, player, card)) {
-                return Net.Result.NO_CARD;
+                return ActionResultMessage.NO_CARD;
             }
             try {
                 upgrades.setInventorySlotContents(slot, card.copy());
@@ -56,7 +56,7 @@ final class CapacityCards {
             return INSTALLED;
         } catch (Throwable t) {
             PatternRouter.LOG.debug("Cannot add a capacity card to {}: {}", ProviderCompat.rawName(view), t.toString());
-            return Net.Result.FULL;
+            return ActionResultMessage.FULL;
         }
     }
 

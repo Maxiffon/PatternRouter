@@ -13,6 +13,8 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
+import patternrouter.net.ActionResultMessage;
+import patternrouter.net.CandidateListMessage;
 import patternrouter.server.BenchCommand;
 import patternrouter.server.CandidateSearch;
 
@@ -35,10 +37,10 @@ public class CommonProxy {
     }
 
     /** Client only: candidate list received. */
-    public void onCandidates(Net.CandidateList msg) {}
+    public void onCandidates(CandidateListMessage msg) {}
 
     /** Client only: upload result received. */
-    public void onResult(Net.Result msg) {}
+    public void onResult(ActionResultMessage msg) {}
 
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {

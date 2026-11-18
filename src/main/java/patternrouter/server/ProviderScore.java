@@ -6,7 +6,7 @@ import java.util.List;
 import net.minecraft.item.ItemStack;
 
 import appeng.api.util.IInterfaceViewable;
-import patternrouter.Net;
+import patternrouter.net.ProviderEntry;
 
 /** One provider as checked for the pattern; becomes a list row. */
 final class ProviderScore {
@@ -17,7 +17,7 @@ final class ProviderScore {
     /** AE2's caption (CRIBs), as chat JSON; empty if none. */
     String suffix;
     int freeSlots;
-    /** Net.Entry flags. */
+    /** ProviderEntry flags. */
     int flags;
     int dim, x, y, z;
     /** Setup items of the machine (deduplicated) for the client-side caption. */
@@ -37,18 +37,18 @@ final class ProviderScore {
         return (flags & flag) != 0;
     }
 
-    Net.Entry toEntry() {
-        Net.Entry e = new Net.Entry();
+    ProviderEntry toEntry() {
+        ProviderEntry e = new ProviderEntry();
         e.icon = icon;
         e.name = name;
         e.suffix = suffix;
-        e.free = freeSlots;
+        e.freeSlots = freeSlots;
         e.flags = flags;
         e.dim = dim;
         e.x = x;
         e.y = y;
         e.z = z;
-        e.config.addAll(setupItems);
+        e.setupItems.addAll(setupItems);
         return e;
     }
 }

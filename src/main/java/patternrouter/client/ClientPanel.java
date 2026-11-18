@@ -35,9 +35,15 @@ import cpw.mods.fml.common.ObfuscationReflectionHelper;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import patternrouter.Config;
-import patternrouter.Net;
 import patternrouter.common.Items;
 import patternrouter.common.ListNote;
+import patternrouter.net.ActionResultMessage;
+import patternrouter.net.CandidateListMessage;
+import patternrouter.net.ExtractConflictMessage;
+import patternrouter.net.PatternRouterNetwork;
+import patternrouter.net.ProviderEntry;
+import patternrouter.net.RequestCandidatesMessage;
+import patternrouter.net.UploadPatternMessage;
 
 /**
  * Pattern terminal side panel in AE2 window style. Built from Forge GUI events and plain buttons; AE2 GUIs are not
@@ -108,8 +114,8 @@ public class ClientPanel {
     /** When the last list request went out (ms), 0 = none outstanding. */
     private long requestSentAt;
     private int token;
-    private List<Net.Entry> entries = Collections.emptyList();
-    private List<Net.Entry> conflicts = Collections.emptyList();
+    private List<ProviderEntry> entries = Collections.emptyList();
+    private List<ProviderEntry> conflicts = Collections.emptyList();
     private int note = -1;
     private int scroll;
     private boolean waiting;
@@ -226,7 +232,7 @@ public class ClientPanel {
         if (e.gui != gui || gui == null || !visible) return;
         for (RowButton b : rows) {
             if (b.visible && b.hovered(e.mouseX, e.mouseY)) {
-                Net.Entry en = entries.get(scroll + b.slot);
+                ProviderEntry en = entries.get(scroll + b.slot);
                 List<String> tip = new ArrayList<>();
                 tip.add(displayName(en));
                 tip.add(flagsLine(en, true));
@@ -290,21 +296,21 @@ public class ClientPanel {
             int index = scroll + ((RowButton) e.button).slot;
             if (index < entries.size()) {
                 lastActionName = displayName(entries.get(index));
-                Net.CH.sendToServer(new Net.Upload(token, index));
+                PatternRouterNetwork.channel.sendToServer(new UploadPatternMessage(token, index));
                 setStatus(I18n.format("patternrouter.status.uploading"), GUI_TEXT_DIM, 3000);
             }
         } else {
             int i = extractButtons.indexOf(e.button);
             if (i >= 0 && i < conflicts.size()) {
                 lastActionName = displayName(conflicts.get(i));
-                Net.CH.sendToServer(new Net.ExtractOld(token, i));
+                PatternRouterNetwork.channel.sendToServer(new ExtractConflictMessage(token, i));
                 setStatus(I18n.format("patternrouter.status.extracting"), GUI_TEXT_DIM, 3000);
             }
         }
     }
 
     /** Highlight the provider in the world with AE2's own highlighter (as its interface terminal does). */
-    private void highlight(Net.Entry en) {
+    private void highlight(ProviderEntry en) {
         Minecraft mc = Minecraft.getMinecraft();
         try {
             appeng.client.render.highlighter.BlockPosHighlighter.highlightBlocks(
@@ -321,10 +327,10 @@ public class ClientPanel {
 
     // ------------------------------------------------------------------ server replies
 
-    public void onCandidates(Net.CandidateList msg) {
+    public void onCandidates(CandidateListMessage msg) {
         if (gui == null || sendAt >= 0) return; // the pattern changed since; its own request is about to go out
-        for (Net.Entry e : msg.entries) prepare(e);
-        for (Net.Entry e : msg.conflicts) prepare(e);
+        for (ProviderEntry e : msg.entries) prepare(e);
+        for (ProviderEntry e : msg.conflicts) prepare(e);
         token = msg.token;
         entries = msg.entries;
         conflicts = msg.conflicts;
@@ -334,36 +340,36 @@ public class ClientPanel {
         requestSentAt = 0;
     }
 
-    public void onResult(Net.Result msg) {
-        String name = lastActionName != null ? lastActionName : resolveName(msg.name, null);
+    public void onResult(ActionResultMessage msg) {
+        String name = lastActionName != null ? lastActionName : resolveName(msg.providerName, null);
         int good = 0x1E7A1E, bad = 0xB00000;
         switch (msg.code) {
-            case Net.Result.OK:
+            case ActionResultMessage.OK:
                 setStatus(I18n.format("patternrouter.result.ok", name), good, 4000);
                 break;
-            case Net.Result.OK_CARD:
+            case ActionResultMessage.OK_WITH_CARD:
                 setStatus(I18n.format("patternrouter.result.okcard", name), good, 5000);
                 break;
-            case Net.Result.NO_CARD:
+            case ActionResultMessage.NO_CARD:
                 setStatus(I18n.format("patternrouter.result.nocard", name), bad, 5000);
                 break;
-            case Net.Result.MAX_CARDS:
+            case ActionResultMessage.MAX_CARDS:
                 setStatus(I18n.format("patternrouter.result.maxcards", name), bad, 5000);
                 break;
-            case Net.Result.EXTRACTED:
+            case ActionResultMessage.EXTRACTED:
                 setStatus(I18n.format("patternrouter.result.extracted", name), good, 4000);
                 lastKey = null; // refresh the conflict list
                 break;
-            case Net.Result.INV_FULL:
+            case ActionResultMessage.INVENTORY_FULL:
                 setStatus(I18n.format("patternrouter.result.invfull"), bad, 4000);
                 break;
-            case Net.Result.FULL:
+            case ActionResultMessage.FULL:
                 setStatus(I18n.format("patternrouter.result.full", name), bad, 4000);
                 break;
-            case Net.Result.DENIED:
+            case ActionResultMessage.DENIED:
                 setStatus(I18n.format("patternrouter.result.denied"), bad, 4000);
                 break;
-            case Net.Result.NO_PATTERN:
+            case ActionResultMessage.NO_PATTERN:
                 setStatus(I18n.format("patternrouter.result.nopattern"), bad, 4000);
                 break;
             default:
@@ -593,8 +599,8 @@ public class ClientPanel {
             out = ((ItemEncodedPattern) pattern.getItem()).getOutput(pattern);
         } catch (Throwable ignored) {}
         boolean ctx = RecipeContext.appliesTo(out);
-        Net.CH.sendToServer(
-            new Net.Request(
+        PatternRouterNetwork.channel.sendToServer(
+            new RequestCandidatesMessage(
                 ctx ? RecipeContext.category : "",
                 ctx ? RecipeContext.nonConsumables : Collections.emptyList(),
                 ctx ? RecipeContext.machineName : ""));
@@ -623,17 +629,17 @@ public class ClientPanel {
         statusUntil = System.currentTimeMillis() + ms;
     }
 
-    private static void prepare(Net.Entry e) {
+    private static void prepare(ProviderEntry e) {
         e.name = resolveName(e.name, e.icon);
         e.suffix = parseSuffix(e.suffix);
-        if (e.suffix.isEmpty() && !e.config.isEmpty()) e.suffix = configCaption(e.config);
+        if (e.suffix.isEmpty() && !e.setupItems.isEmpty()) e.suffix = setupCaption(e.setupItems);
     }
 
     /**
      * "{[5], Mold (Ingot)}" from the items the machine is set up with. Names come from the item itself, as in
      * tooltips: GT translates its items through its own language manager, not plain translation keys.
      */
-    private static String configCaption(List<ItemStack> config) {
+    private static String setupCaption(List<ItemStack> config) {
         StringBuilder b = new StringBuilder("{");
         for (ItemStack st : config) {
             if (b.length() > 1) b.append(", ");
@@ -684,45 +690,45 @@ public class ClientPanel {
         }
     }
 
-    private static String displayName(Net.Entry e) {
+    private static String displayName(ProviderEntry e) {
         return e.suffix == null || e.suffix.isEmpty() ? e.name : e.name + " " + e.suffix;
     }
 
     /** Flags line: dark colors in the list (light AE2 background), bright ones in tooltips (dark background). */
-    private static String flagsLine(Net.Entry e, boolean tooltip) {
+    private static String flagsLine(ProviderEntry e, boolean tooltip) {
         String good = tooltip ? "§a" : "§2", bad = tooltip ? "§c" : "§4", warn = tooltip ? "§e" : "§6",
             dim = tooltip ? "§7" : "§8";
         StringBuilder sb = new StringBuilder();
-        if ((e.flags & Net.Entry.REMEMBERED) != 0) sb.append(warn)
+        if ((e.flags & ProviderEntry.REMEMBERED) != 0) sb.append(warn)
             .append("★ ")
             .append(I18n.format("patternrouter.flag.remembered"))
             .append("  ");
-        if ((e.flags & Net.Entry.MOLD_MATCH) != 0) sb.append(good)
+        if ((e.flags & ProviderEntry.SETUP_FITS) != 0) sb.append(good)
             .append("✔ ")
             .append(I18n.format("patternrouter.flag.mold"))
             .append("  ");
-        else if ((e.flags & Net.Entry.MOLD_MISMATCH) != 0) sb.append(bad)
+        else if ((e.flags & ProviderEntry.SETUP_CONFLICTS) != 0) sb.append(bad)
             .append("✘ ")
             .append(
                 I18n.format(
-                    (e.flags & Net.Entry.NO_FLUIDS) != 0 ? "patternrouter.flag.nofluid"
+                    (e.flags & ProviderEntry.NO_FLUIDS) != 0 ? "patternrouter.flag.nofluid"
                         : "patternrouter.flag.othermold"))
             .append("  ");
-        else if ((e.flags & Net.Entry.BY_NAME) != 0) sb.append(warn)
+        else if ((e.flags & ProviderEntry.BY_NAME) != 0) sb.append(warn)
             .append("≈ ")
             .append(I18n.format("patternrouter.flag.byname"))
             .append("  ");
-        else if ((e.flags & Net.Entry.RECIPE_MATCH) != 0) sb.append(good)
+        else if ((e.flags & ProviderEntry.RECIPE_MATCH) != 0) sb.append(good)
             .append("✔ ")
             .append(I18n.format("patternrouter.flag.machine"))
             .append("  ");
-        if ((e.flags & Net.Entry.HAS_SAME) != 0) sb.append(warn)
+        if ((e.flags & ProviderEntry.HAS_SAME_OUTPUT) != 0) sb.append(warn)
             .append(I18n.format("patternrouter.flag.same"))
             .append("  ");
-        if (e.free == 0) sb.append(bad)
+        if (e.freeSlots == 0) sb.append(bad)
             .append(I18n.format("patternrouter.flag.full"));
         else sb.append(dim)
-            .append(I18n.format(tooltip ? "patternrouter.flag.free.long" : "patternrouter.flag.free", e.free));
+            .append(I18n.format(tooltip ? "patternrouter.flag.free.long" : "patternrouter.flag.free", e.freeSlots));
         return sb.toString();
     }
 
@@ -964,14 +970,14 @@ public class ClientPanel {
         @Override
         public void drawButton(Minecraft mc, int mx, int my) {
             if (!visible || scroll + slot >= entries.size()) return;
-            Net.Entry e = entries.get(scroll + slot);
+            ProviderEntry e = entries.get(scroll + slot);
             boolean hover = hovered(mx, my);
             boolean pressed = hover && org.lwjgl.input.Mouse.isButtonDown(0);
             // Raised tile; bluish highlight on hover like AE2 selection.
             drawRaised(xPosition + 1, yPosition + 1, width - 2, height - 2, hover ? 0xFFD3DCE8 : GUI_FILL, pressed);
-            int stripe = (e.flags & Net.Entry.MOLD_MATCH) != 0 ? 0xFF2E9E2E
-                : (e.flags & Net.Entry.MOLD_MISMATCH) != 0 ? 0xFFC03030
-                    : (e.flags & Net.Entry.RECIPE_MATCH) != 0 ? 0xFF4A7FC0 : 0xFF8B8B8B;
+            int stripe = (e.flags & ProviderEntry.SETUP_FITS) != 0 ? 0xFF2E9E2E
+                : (e.flags & ProviderEntry.SETUP_CONFLICTS) != 0 ? 0xFFC03030
+                    : (e.flags & ProviderEntry.RECIPE_MATCH) != 0 ? 0xFF4A7FC0 : 0xFF8B8B8B;
             drawRect(xPosition + 2, yPosition + 2, xPosition + 5, yPosition + height - 2, stripe);
             drawRect(xPosition + 2, yPosition + 2, xPosition + 3, yPosition + height - 2, 0x40FFFFFF);
             int sy = yPosition + (height - 18) / 2;
@@ -1002,7 +1008,7 @@ public class ClientPanel {
         @Override
         public void drawButton(Minecraft mc, int mx, int my) {
             if (!visible || slot >= conflicts.size()) return;
-            Net.Entry e = conflicts.get(slot);
+            ProviderEntry e = conflicts.get(slot);
             drawRaised(xPosition + 1, yPosition + 1, width - 2, height - 2, 0xFFD9CDB8, false);
             drawRect(xPosition + 2, yPosition + 2, xPosition + 5, yPosition + height - 2, 0xFFD08A1E);
             int sy = yPosition + (height - 18) / 2;

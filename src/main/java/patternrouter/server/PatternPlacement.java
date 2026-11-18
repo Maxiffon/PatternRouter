@@ -10,9 +10,10 @@ import net.minecraft.item.ItemStack;
 import appeng.api.networking.IGrid;
 import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
-import patternrouter.Net;
 import patternrouter.PatternRouter;
 import patternrouter.common.Items;
+import patternrouter.net.ActionResultMessage;
+import patternrouter.net.PatternRouterNetwork;
 import patternrouter.server.PlayerSessions.ConflictRef;
 import patternrouter.server.PlayerSessions.ShownList;
 import patternrouter.server.ae2.GridAccess;
@@ -30,7 +31,7 @@ public final class PatternPlacement {
     public static void upload(EntityPlayerMP player, int token, int index) {
         ShownList shown = shownList(player, token);
         if (shown == null || index < 0 || index >= shown.targets.size()) {
-            reply(player, Net.Result.GONE, "");
+            reply(player, ActionResultMessage.GONE, "");
             return;
         }
         ContainerPatternTerm term = (ContainerPatternTerm) player.openContainer;
@@ -40,12 +41,12 @@ public final class PatternPlacement {
         IInventory patternSlots = Patterns.patternSlots(term);
         ItemStack pattern = Patterns.encodedPattern(term);
         if (patternSlots == null || pattern == null) {
-            reply(player, Net.Result.NO_PATTERN, ProviderCompat.rawName(view));
+            reply(player, ActionResultMessage.NO_PATTERN, ProviderCompat.rawName(view));
             return;
         }
         // The list was made for another pattern (re-encoded since, or changed by another player at this terminal).
         if (!Items.sameItem(pattern, shown.pattern)) {
-            reply(player, Net.Result.GONE, "");
+            reply(player, ActionResultMessage.GONE, "");
             return;
         }
         int slot = freeSlot(view, pattern);
@@ -59,7 +60,7 @@ public final class PatternPlacement {
             cardAdded = true;
             slot = freeSlot(view, pattern);
             if (slot < 0) {
-                reply(player, Net.Result.FULL, ProviderCompat.rawName(view));
+                reply(player, ActionResultMessage.FULL, ProviderCompat.rawName(view));
                 return;
             }
         }
@@ -72,7 +73,10 @@ public final class PatternPlacement {
         patternSlots.setInventorySlotContents(Patterns.ENCODED_OUTPUT_SLOT, pattern.stackSize > 0 ? pattern : null);
         term.detectAndSendChanges();
         rememberChoice(player, shown.choiceKey, view);
-        reply(player, cardAdded ? Net.Result.OK_CARD : Net.Result.OK, ProviderCompat.rawName(view));
+        reply(
+            player,
+            cardAdded ? ActionResultMessage.OK_WITH_CARD : ActionResultMessage.OK,
+            ProviderCompat.rawName(view));
         PatternRouter.LOG
             .debug("{} uploaded a pattern to {}", player.getCommandSenderName(), ProviderCompat.rawName(view));
     }
@@ -80,7 +84,7 @@ public final class PatternPlacement {
     public static void extract(EntityPlayerMP player, int token, int index) {
         ShownList shown = shownList(player, token);
         if (shown == null || index < 0 || index >= shown.conflicts.size()) {
-            reply(player, Net.Result.GONE, "");
+            reply(player, ActionResultMessage.GONE, "");
             return;
         }
         Container open = player.openContainer;
@@ -95,7 +99,7 @@ public final class PatternPlacement {
             : null;
         // The slot must still hold exactly the pattern we listed; otherwise someone changed it.
         if (now == null || !ItemStack.areItemStacksEqual(now, conflict.pattern)) {
-            reply(player, Net.Result.GONE, ProviderCompat.rawName(view));
+            reply(player, ActionResultMessage.GONE, ProviderCompat.rawName(view));
             return;
         }
         ItemStack taken = now.copy();
@@ -107,12 +111,12 @@ public final class PatternPlacement {
             inv.setInventorySlotContents(conflict.slot, taken.stackSize == now.stackSize ? now : taken);
             inv.markDirty();
             player.inventoryContainer.detectAndSendChanges();
-            reply(player, Net.Result.INV_FULL, ProviderCompat.rawName(view));
+            reply(player, ActionResultMessage.INVENTORY_FULL, ProviderCompat.rawName(view));
             return;
         }
         player.inventoryContainer.detectAndSendChanges();
         open.detectAndSendChanges();
-        reply(player, Net.Result.EXTRACTED, ProviderCompat.rawName(view));
+        reply(player, ActionResultMessage.EXTRACTED, ProviderCompat.rawName(view));
     }
 
     /** The player's list with this token, if it is the one shown in the pattern terminal still open; else null. */
@@ -135,11 +139,11 @@ public final class PatternPlacement {
         if (view == null || terminalGrid == null
             || !ProviderCompat.isLoaded(view)
             || !GridAccess.isInTerminalNetworks(view, terminalGrid)) {
-            reply(player, Net.Result.GONE, "");
+            reply(player, ActionResultMessage.GONE, "");
             return null;
         }
         if (!GridAccess.canBuild(terminalGrid, player) || !GridAccess.canBuildAt(view, player)) {
-            reply(player, Net.Result.DENIED, ProviderCompat.rawName(view));
+            reply(player, ActionResultMessage.DENIED, ProviderCompat.rawName(view));
             return null;
         }
         return view;
@@ -162,6 +166,6 @@ public final class PatternPlacement {
     }
 
     private static void reply(EntityPlayerMP player, int code, String providerName) {
-        Net.CH.sendTo(new Net.Result(code, providerName), player);
+        PatternRouterNetwork.channel.sendTo(new ActionResultMessage(code, providerName), player);
     }
 }

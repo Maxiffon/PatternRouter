@@ -21,9 +21,11 @@ import appeng.api.networking.IGridNode;
 import appeng.api.util.IInterfaceViewable;
 import appeng.container.implementations.ContainerPatternTerm;
 import gregtech.api.recipe.RecipeMap;
-import patternrouter.Net;
 import patternrouter.PatternRouter;
 import patternrouter.common.ListNote;
+import patternrouter.net.CandidateListMessage;
+import patternrouter.net.PatternRouterNetwork;
+import patternrouter.net.ProviderEntry;
 import patternrouter.server.PlayerSessions.ConflictRef;
 import patternrouter.server.PlayerSessions.ShownList;
 import patternrouter.server.ae2.GridAccess;
@@ -50,13 +52,13 @@ public final class CandidateSearch {
      * duplicate -> name. A guess by name stays below every machine that was actually seen, even a full one.
      */
     private static final Comparator<ProviderScore> LIST_ORDER = Comparator
-        .<ProviderScore>comparingInt(s -> s.has(Net.Entry.REMEMBERED) ? 0 : 1)
-        .thenComparingInt(s -> s.has(Net.Entry.RECIPE_MATCH) ? 0 : 1)
-        .thenComparingInt(s -> s.has(Net.Entry.BY_NAME) ? 1 : 0)
+        .<ProviderScore>comparingInt(s -> s.has(ProviderEntry.REMEMBERED) ? 0 : 1)
+        .thenComparingInt(s -> s.has(ProviderEntry.RECIPE_MATCH) ? 0 : 1)
+        .thenComparingInt(s -> s.has(ProviderEntry.BY_NAME) ? 1 : 0)
         .thenComparingInt(s -> s.freeSlots > 0 ? 0 : 1)
-        .thenComparingInt(s -> s.has(Net.Entry.MOLD_MATCH) ? 0 : s.has(Net.Entry.MOLD_MISMATCH) ? 2 : 1)
+        .thenComparingInt(s -> s.has(ProviderEntry.SETUP_FITS) ? 0 : s.has(ProviderEntry.SETUP_CONFLICTS) ? 2 : 1)
         .thenComparingInt(s -> s.hasSpareSetup ? 1 : 0)
-        .thenComparingInt(s -> s.has(Net.Entry.HAS_SAME) ? 1 : 0)
+        .thenComparingInt(s -> s.has(ProviderEntry.HAS_SAME_OUTPUT) ? 1 : 0)
         .thenComparing(s -> s.name);
 
     /** Providers checked by the last lookup (for the benchmark). */
@@ -66,8 +68,8 @@ public final class CandidateSearch {
 
     public static void handleRequest(EntityPlayerMP player, String category, List<ItemStack> nonConsumables,
         String machineName) {
-        Net.CandidateList reply = forTerminal(player, category, nonConsumables, machineName);
-        if (reply != null) Net.CH.sendTo(reply, player);
+        CandidateListMessage reply = forTerminal(player, category, nonConsumables, machineName);
+        if (reply != null) PatternRouterNetwork.channel.sendTo(reply, player);
     }
 
     /** The player left: drop their list and bench replay. */
@@ -82,8 +84,8 @@ public final class CandidateSearch {
     }
 
     /** The lookup for the pattern in the player's open terminal; null if no pattern terminal is open. */
-    private static Net.CandidateList forTerminal(EntityPlayerMP player, String category, List<ItemStack> nonConsumables,
-        String machineName) {
+    private static CandidateListMessage forTerminal(EntityPlayerMP player, String category,
+        List<ItemStack> nonConsumables, String machineName) {
         int token = PlayerSessions.nextToken();
         if (!(player.openContainer instanceof ContainerPatternTerm term)) return null; // already closed, ignore
         ItemStack pattern = Patterns.encodedPattern(term);
@@ -95,7 +97,7 @@ public final class CandidateSearch {
     }
 
     /** /patternrouter bench: the player's last lookup again, without a log line and without replacing their list. */
-    static Net.CandidateList replay(EntityPlayerMP player, BenchCommand.Replay replay) {
+    static CandidateListMessage replay(EntityPlayerMP player, BenchCommand.Replay replay) {
         int token = PlayerSessions.nextToken();
         IGrid grid = replay.grid.get();
         if (grid == null) return null;
@@ -111,10 +113,11 @@ public final class CandidateSearch {
             true);
     }
 
-    private static Net.CandidateList run(EntityPlayerMP player, int token, ContainerPatternTerm term, ItemStack pattern,
-        IGrid grid, String category, List<ItemStack> nonConsumables, String machineName, boolean bench) {
+    private static CandidateListMessage run(EntityPlayerMP player, int token, ContainerPatternTerm term,
+        ItemStack pattern, IGrid grid, String category, List<ItemStack> nonConsumables, String machineName,
+        boolean bench) {
         try {
-            Net.CandidateList reply = new Net.CandidateList();
+            CandidateListMessage reply = new CandidateListMessage();
             reply.token = token;
             if (pattern == null) {
                 reply.note = ListNote.NO_PATTERN.wire();
@@ -138,7 +141,7 @@ public final class CandidateSearch {
         PatternContents.forget();
     }
 
-    private static void fillList(Net.CandidateList reply, EntityPlayerMP player, ContainerPatternTerm term,
+    private static void fillList(CandidateListMessage reply, EntityPlayerMP player, ContainerPatternTerm term,
         ItemStack pattern, IGrid grid, String category, List<ItemStack> nonConsumables, String machineName,
         boolean bench) {
         long started = System.nanoTime();
@@ -193,7 +196,8 @@ public final class CandidateSearch {
                             .score(view, patterns, wanted, nonConsumables, pattern, output, contents);
                         // Fluid inputs need a provider that can push fluids (CRIB buffer, dual interface).
                         if (contents.hasFluidInputs() && !ProviderCompat.acceptsFluids(view)) {
-                            s.flags = (s.flags & ~Net.Entry.MOLD_MATCH) | Net.Entry.MOLD_MISMATCH | Net.Entry.NO_FLUIDS;
+                            s.flags = (s.flags & ~ProviderEntry.SETUP_FITS) | ProviderEntry.SETUP_CONFLICTS
+                                | ProviderEntry.NO_FLUIDS;
                         }
                         out.add(s);
                     } catch (Throwable t) {
@@ -212,10 +216,10 @@ public final class CandidateSearch {
     private static void markNameMatches(List<ProviderScore> scored, String machineName) {
         List<String> words = ProviderNames.significantWords(machineName);
         for (ProviderScore s : scored) {
-            if (!s.has(Net.Entry.RECIPE_MATCH) && !s.machineSeen
+            if (!s.has(ProviderEntry.RECIPE_MATCH) && !s.machineSeen
                 && ProviderCompat.isCustomNamed(s.view)
                 && ProviderNames.containsAny(s.name, words)) {
-                s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.BY_NAME;
+                s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.BY_NAME;
             }
         }
     }
@@ -226,12 +230,12 @@ public final class CandidateSearch {
         if (choices == null) return;
         for (ProviderScore s : scored) {
             if (choices.isRemembered(player.getUniqueID(), choiceKey, new int[] { s.dim, s.x, s.y, s.z })) {
-                s.flags |= Net.Entry.REMEMBERED;
+                s.flags |= ProviderEntry.REMEMBERED;
             }
         }
     }
 
-    private static List<ConflictRef> collectConflicts(List<ProviderScore> scored, Net.CandidateList reply) {
+    private static List<ConflictRef> collectConflicts(List<ProviderScore> scored, CandidateListMessage reply) {
         List<ConflictRef> conflicts = new ArrayList<>();
         for (ProviderScore s : scored) {
             for (int i = 0; i < s.sameOutputSlots.size() && conflicts.size() < MAX_CONFLICTS; i++) {
@@ -240,8 +244,8 @@ public final class CandidateSearch {
                     .getStackInSlot(slot);
                 if (old == null) continue;
                 conflicts.add(new ConflictRef(s.view, slot, old));
-                Net.Entry e = s.toEntry();
-                e.flags = Net.Entry.HAS_SAME;
+                ProviderEntry e = s.toEntry();
+                e.flags = ProviderEntry.HAS_SAME_OUTPUT;
                 reply.conflicts.add(e);
             }
         }
@@ -267,7 +271,7 @@ public final class CandidateSearch {
 
     /** NONE when some machine fits (by NEI or by the pattern contents); otherwise why not. */
     private static ListNote noteFor(List<ProviderScore> scored, String category, ItemStack pattern, World world) {
-        if (anyHas(scored, Net.Entry.RECIPE_MATCH)) return ListNote.NONE;
+        if (anyHas(scored, ProviderEntry.RECIPE_MATCH)) return ListNote.NONE;
         if (PatternContents.of(pattern, world)
             .isCraftingPattern()) return ListNote.NO_ASSEMBLER;
         if (RecipeMaps.forCategory(category) == null) return ListNote.UNKNOWN_RECIPE;
@@ -281,13 +285,13 @@ public final class CandidateSearch {
      * stay as "doesn't fit" so the player sees where to put the right item.
      */
     private static List<ProviderScore> shownProviders(List<ProviderScore> scored) {
-        if (anyHas(scored, Net.Entry.RECIPE_MATCH)) {
-            scored.removeIf(s -> (s.flags & (Net.Entry.RECIPE_MATCH | Net.Entry.REMEMBERED)) == 0);
+        if (anyHas(scored, ProviderEntry.RECIPE_MATCH)) {
+            scored.removeIf(s -> (s.flags & (ProviderEntry.RECIPE_MATCH | ProviderEntry.REMEMBERED)) == 0);
         } else {
-            scored.removeIf(s -> s.freeSlots == 0 && !s.has(Net.Entry.REMEMBERED));
+            scored.removeIf(s -> s.freeSlots == 0 && !s.has(ProviderEntry.REMEMBERED));
         }
-        if (anyHas(scored, Net.Entry.MOLD_MATCH)) {
-            scored.removeIf(s -> s.has(Net.Entry.MOLD_MISMATCH) && !s.has(Net.Entry.REMEMBERED));
+        if (anyHas(scored, ProviderEntry.SETUP_FITS)) {
+            scored.removeIf(s -> s.has(ProviderEntry.SETUP_CONFLICTS) && !s.has(ProviderEntry.REMEMBERED));
         }
         scored.sort(LIST_ORDER);
         return scored.size() > MAX_ENTRIES ? new ArrayList<>(scored.subList(0, MAX_ENTRIES)) : scored;

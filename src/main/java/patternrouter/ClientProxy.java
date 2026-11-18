@@ -9,6 +9,8 @@ import cpw.mods.fml.common.network.FMLNetworkEvent;
 import patternrouter.client.ClientPanel;
 import patternrouter.client.NeiCompat;
 import patternrouter.client.RecipeContext;
+import patternrouter.net.ActionResultMessage;
+import patternrouter.net.CandidateListMessage;
 
 public class ClientProxy extends CommonProxy {
 
@@ -31,12 +33,12 @@ public class ClientProxy extends CommonProxy {
     }
 
     @Override
-    public void onCandidates(Net.CandidateList msg) {
+    public void onCandidates(CandidateListMessage msg) {
         panel.post(() -> panel.onCandidates(msg));
     }
 
     @Override
-    public void onResult(Net.Result msg) {
+    public void onResult(ActionResultMessage msg) {
         panel.post(() -> panel.onResult(msg));
     }
 }

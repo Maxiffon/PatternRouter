@@ -13,9 +13,9 @@ import net.minecraft.util.IChatComponent;
 
 import appeng.api.util.IInterfaceViewable;
 import gregtech.api.recipe.RecipeMap;
-import patternrouter.Net;
 import patternrouter.PatternRouter;
 import patternrouter.common.Items;
+import patternrouter.net.ProviderEntry;
 import patternrouter.server.ae2.Patterns;
 import patternrouter.server.ae2.ProviderCompat;
 import patternrouter.server.machine.MachineDiagnostics;
@@ -43,7 +43,8 @@ final class ProviderScorer {
         if (contents.isCraftingPattern()) {
             // Crafting pattern: AE2 itself knows which providers craft (interface next to a molecular assembler,
             // GT Large Molecular Assembler).
-            if (ProviderCompat.isCraftingProvider(view)) s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
+            if (ProviderCompat.isCraftingProvider(view))
+                s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_FITS;
             return s;
         }
         Collection<RecipeMap<?>> maps = MachineLocator.recipeMapsFed(view);
@@ -99,7 +100,7 @@ final class ProviderScorer {
                 if (patterns.isItemValidForSlot(i, pattern)) s.freeSlots++;
             } else if (output != null
                 && Items.sameItem(Patterns.storedOutput(in, te != null ? te.getWorldObj() : null), output)) {
-                    s.flags |= Net.Entry.HAS_SAME;
+                    s.flags |= ProviderEntry.HAS_SAME_OUTPUT;
                     s.sameOutputSlots.add(i);
                 }
         }
@@ -108,16 +109,16 @@ final class ProviderScorer {
     private static void scoreForCategory(ProviderScore s, Collection<RecipeMap<?>> maps, RecipeMap<?> wanted,
         PatternContents contents, MachineInventory machine, List<ItemStack> nonConsumables) {
         if (!maps.contains(wanted)) return;
-        s.flags |= Net.Entry.RECIPE_MATCH;
+        s.flags |= ProviderEntry.RECIPE_MATCH;
         RecipeFit fit = contents.isEmpty() ? RecipeFit.NONE : RecipeFit.best(wanted, contents, machine);
         if (fit.fits()) {
-            s.flags |= Net.Entry.MOLD_MATCH;
+            s.flags |= ProviderEntry.SETUP_FITS;
             s.hasSpareSetup = fit == RecipeFit.WITH_SPARE_SETUP;
         } else if (fit == RecipeFit.CONFLICTING) {
-            s.flags |= Net.Entry.MOLD_MISMATCH;
+            s.flags |= ProviderEntry.SETUP_CONFLICTS;
         } else if (!nonConsumables.isEmpty()) {
             // GT lookup failed (e.g. odd pattern amounts): fall back to the items NEI marked as not consumed.
-            s.flags |= holdsAll(machine, nonConsumables) ? Net.Entry.MOLD_MATCH : Net.Entry.MOLD_MISMATCH;
+            s.flags |= holdsAll(machine, nonConsumables) ? ProviderEntry.SETUP_FITS : ProviderEntry.SETUP_CONFLICTS;
         }
     }
 
@@ -138,13 +139,14 @@ final class ProviderScorer {
             if (!RecipeMaps.canMake(map, contents)) continue;
             RecipeFit fit = RecipeFit.best(map, contents, machine);
             if (fit.fits()) {
-                s.flags = (s.flags & ~Net.Entry.MOLD_MISMATCH) | Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MATCH;
+                s.flags = (s.flags & ~ProviderEntry.SETUP_CONFLICTS) | ProviderEntry.RECIPE_MATCH
+                    | ProviderEntry.SETUP_FITS;
                 s.hasSpareSetup = fit == RecipeFit.WITH_SPARE_SETUP;
                 if (fit == RecipeFit.EXACT) break;
                 continue;
             }
-            if (s.has(Net.Entry.MOLD_MATCH)) continue; // a loose fit in another map beats a mismatch
-            if (fit == RecipeFit.CONFLICTING) s.flags |= Net.Entry.RECIPE_MATCH | Net.Entry.MOLD_MISMATCH;
+            if (s.has(ProviderEntry.SETUP_FITS)) continue; // a loose fit in another map beats a mismatch
+            if (fit == RecipeFit.CONFLICTING) s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS;
         }
     }
 
