@@ -64,7 +64,10 @@ public final class Net {
             @Override
             public IMessage onMessage(ExtractOld msg, MessageContext ctx) {
                 EntityPlayerMP player = ctx.getServerHandler().playerEntity;
-                CommonProxy.runOnServer(() -> Candidates.handleExtract(player, msg.token, msg.index));
+                ServerQueue.submitAction(
+                    player.getUniqueID(),
+                    "extract",
+                    () -> Candidates.handleExtract(player, msg.token, msg.index));
                 return null;
             }
         }
@@ -113,19 +116,12 @@ public final class Net {
             @Override
             public IMessage onMessage(Request msg, MessageContext ctx) {
                 EntityPlayerMP player = ctx.getServerHandler().playerEntity;
-                // Coalesce: if the player sends a newer request before this one runs, only the newest is worked out.
-                // The new one is queued at the end, so it never jumps ahead of an Upload sent in between.
-                Object ticket = new Object();
-                LATEST.put(player.getUniqueID(), ticket);
-                CommonProxy.runOnServer(() -> {
-                    if (!LATEST.remove(player.getUniqueID(), ticket)) return; // superseded
-                    Candidates.handleRequest(player, msg.category, msg.nonConsumables, msg.machineName);
-                });
+                ServerQueue.submitLatestRequest(
+                    player.getUniqueID(),
+                    () -> Candidates.handleRequest(player, msg.category, msg.nonConsumables, msg.machineName));
                 return null;
             }
         }
-
-        private static final java.util.Map<java.util.UUID, Object> LATEST = new java.util.concurrent.ConcurrentHashMap<>();
     }
 
     /** Put the pattern into candidate #index of list #token. */
@@ -158,7 +154,10 @@ public final class Net {
             @Override
             public IMessage onMessage(Upload msg, MessageContext ctx) {
                 EntityPlayerMP player = ctx.getServerHandler().playerEntity;
-                CommonProxy.runOnServer(() -> Candidates.handleUpload(player, msg.token, msg.index));
+                ServerQueue.submitAction(
+                    player.getUniqueID(),
+                    "upload",
+                    () -> Candidates.handleUpload(player, msg.token, msg.index));
                 return null;
             }
         }

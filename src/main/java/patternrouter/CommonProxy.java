@@ -1,7 +1,5 @@
 package patternrouter;
 
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -16,13 +14,6 @@ import cpw.mods.fml.common.gameevent.TickEvent;
 import patternrouter.server.Bench;
 
 public class CommonProxy {
-
-    /** Tasks from the network thread that must run on the server thread. */
-    private static final Queue<Runnable> SERVER_TASKS = new ConcurrentLinkedQueue<>();
-
-    public static void runOnServer(Runnable r) {
-        SERVER_TASKS.add(r);
-    }
 
     public void init() {
         FMLCommonHandler.instance()
@@ -49,7 +40,7 @@ public class CommonProxy {
         // At most ~25 ms of lookups per tick (half a tick); the rest waits for the next tick. At least one task runs.
         long deadline = System.nanoTime() + TICK_BUDGET_NS;
         boolean first = true;
-        while (budget-- > 0 && (first || System.nanoTime() < deadline) && (r = SERVER_TASKS.poll()) != null) {
+        while (budget-- > 0 && (first || System.nanoTime() < deadline) && (r = ServerQueue.poll()) != null) {
             first = false;
             // If a task runs long, log where the server thread is, so a freeze can be attributed for sure.
             Thread server = Thread.currentThread();
