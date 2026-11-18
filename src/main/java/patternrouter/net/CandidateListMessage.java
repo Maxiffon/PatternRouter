@@ -3,6 +3,7 @@ package patternrouter.net;
 import java.util.ArrayList;
 import java.util.List;
 
+import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
@@ -37,6 +38,14 @@ public class CandidateListMessage implements IMessage {
                 if (i < entries.size()) entries.get(i).takesCard = takesCard;
             }
         }
+        // Added after takesCard: why a row doesn't fit.
+        if (buf.isReadable()) {
+            int n = buf.readUnsignedByte();
+            for (int i = 0; i < n && buf.isReadable(); i++) {
+                String reason = ByteBufUtils.readUTF8String(buf);
+                if (i < entries.size()) entries.get(i).reason = reason;
+            }
+        }
     }
 
     @Override
@@ -48,6 +57,11 @@ public class CandidateListMessage implements IMessage {
         int n = Math.min(entries.size(), MAX_ROWS);
         buf.writeByte(n);
         for (int i = 0; i < n; i++) buf.writeBoolean(entries.get(i).takesCard);
+        buf.writeByte(n);
+        for (int i = 0; i < n; i++) {
+            String r = entries.get(i).reason;
+            ByteBufUtils.writeUTF8String(buf, r == null ? "" : r);
+        }
     }
 
     private static void readEntries(ByteBuf buf, List<ProviderEntry> list) {

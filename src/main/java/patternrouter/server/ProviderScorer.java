@@ -10,10 +10,14 @@ import java.util.Set;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.IChatComponent;
 
 import appeng.api.util.IInterfaceViewable;
 import gregtech.api.recipe.RecipeMap;
+import gregtech.api.util.GTRecipe;
+import gregtech.api.util.GTRecipe.RecipeAssemblyLine;
+import gregtech.common.tileentities.machines.multi.MTEAssemblyLine;
 import patternrouter.PatternRouter;
 import patternrouter.common.Items;
 import patternrouter.net.ProviderEntry;
@@ -22,6 +26,7 @@ import patternrouter.server.ae2.ProviderCompat;
 import patternrouter.server.machine.AssemblyLineData;
 import patternrouter.server.machine.MachineDiagnostics;
 import patternrouter.server.machine.MachineInventory;
+import patternrouter.server.machine.MachineLimits;
 import patternrouter.server.machine.MachineLocator;
 import patternrouter.server.machine.MachineModes;
 import patternrouter.server.recipe.PatternContents;
@@ -73,11 +78,46 @@ final class ProviderScorer {
         if (s.suffix.isEmpty()) s.setupItems.addAll(oneOfEach(machine.setupItems));
         if (wanted != null) scoreForCategory(s, maps, wanted, contents, machine, nonConsumables);
         else if (!contents.isEmpty()) scoreByLookup(s, maps, contents, machine);
-        if (!s.has(ProviderEntry.RECIPE_MATCH) && fitsOtherMode(modes.otherModes, wanted, contents, machine)) {
-            s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS | ProviderEntry.OTHER_MODE;
+        if (!s.has(ProviderEntry.RECIPE_MATCH)) {
+            RecipeMap<?> mode = otherModeFor(modes.otherModes, wanted, contents, machine);
+            if (mode != null) {
+                s.flags |= ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS | ProviderEntry.OTHER_MODE;
+                s.reason = MachineLimits.Reason.ours(
+                    new ChatComponentTranslation(
+                        "patternrouter.why.othermode",
+                        new ChatComponentTranslation(mode.unlocalizedName))).wire;
+            }
         }
         scoreAssemblyLineResearch(s, modes, wanted, contents);
+        scoreLimits(s, modes, wanted, contents, machine);
         return s;
+    }
+
+    /**
+     * The machine would take the recipe but can't run it: not enough power for its EU/t (lasers, amps and the
+     * machine's discount counted), too little coil heat, too low a glass or casing tier, ... as the machine itself
+     * checks before starting a recipe.
+     */
+    private static void scoreLimits(ProviderScore s, MachineModes modes, RecipeMap<?> wanted, PatternContents contents,
+        MachineInventory machine) {
+        if (!s.has(ProviderEntry.RECIPE_MATCH) || s.has(ProviderEntry.SETUP_CONFLICTS) || contents.isEmpty()) return;
+        MachineLimits.Reason why = null;
+        RecipeMap<?> assemblyLine = gregtech.api.recipe.RecipeMaps.assemblylineVisualRecipes;
+        if (modes.current.contains(assemblyLine) && (wanted == null || wanted == assemblyLine)) {
+            RecipeAssemblyLine r = AssemblyLineData.recipeFor(modes.machines, contents.outputItem());
+            if (r != null) why = MachineLimits.whyNotPower(modes.machines, MTEAssemblyLine.class, r.mEUt);
+        } else {
+            for (RecipeMap<?> map : modes.current) {
+                if (wanted != null && map != wanted) continue;
+                GTRecipe recipe = contents.recipeIn(map, machine.items);
+                if (recipe == null) continue;
+                why = MachineLimits.whyNot(modes.machines, map, recipe);
+                break;
+            }
+        }
+        if (why == null) return;
+        s.flags = (s.flags & ~ProviderEntry.SETUP_FITS) | ProviderEntry.RECIPE_MATCH | ProviderEntry.SETUP_CONFLICTS;
+        s.reason = why.wire;
     }
 
     /**
@@ -92,19 +132,24 @@ final class ProviderScorer {
         if (researched == null || (wanted == null && !researched)) return;
         s.flags &= ~(ProviderEntry.SETUP_FITS | ProviderEntry.SETUP_CONFLICTS);
         s.flags |= ProviderEntry.RECIPE_MATCH | (researched ? ProviderEntry.SETUP_FITS : ProviderEntry.SETUP_CONFLICTS);
+        s.reason = researched ? ""
+            : MachineLimits.Reason.ours(new ChatComponentTranslation("patternrouter.why.research")).wire;
     }
 
-    /** The pattern is a recipe of a mode the machine is not set to (Precise Assembler set to plain assembling). */
-    private static boolean fitsOtherMode(Collection<RecipeMap<?>> otherModes, RecipeMap<?> wanted,
+    /**
+     * The mode (recipe map) the machine would need for the pattern when it is set to another one (Precise Assembler
+     * set to plain assembling); null if none.
+     */
+    private static RecipeMap<?> otherModeFor(Collection<RecipeMap<?>> otherModes, RecipeMap<?> wanted,
         PatternContents contents, MachineInventory machine) {
-        if (wanted != null) return otherModes.contains(wanted);
-        if (contents.isEmpty()) return false;
+        if (wanted != null) return otherModes.contains(wanted) ? wanted : null;
+        if (contents.isEmpty()) return null;
         for (RecipeMap<?> map : otherModes) {
             if (RecipeMaps.canMake(map, contents) && RecipeFit.best(map, contents, machine) != RecipeFit.NONE) {
-                return true;
+                return map;
             }
         }
-        return false;
+        return null;
     }
 
     private static void readIdentity(ProviderScore s, IInterfaceViewable view) {

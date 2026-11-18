@@ -19,6 +19,8 @@ final class ProviderScore {
     int freeSlots;
     /** No free slot, but a capacity card still fits. */
     boolean takesCard;
+    /** Why it doesn't fit (ProviderEntry.reason), "" if nothing specific. */
+    String reason = "";
     /** ProviderEntry flags. */
     int flags;
     int dim, x, y, z;
@@ -46,6 +48,7 @@ final class ProviderScore {
         e.suffix = suffix;
         e.freeSlots = freeSlots;
         e.takesCard = takesCard;
+        e.reason = reason;
         e.flags = flags;
         e.dim = dim;
         e.x = x;

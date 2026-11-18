@@ -35,6 +35,13 @@ public class ProviderEntry {
      * after the list, where clients before 1.4 don't read.
      */
     public boolean takesCard;
+    /**
+     * Why it doesn't fit, "" if nothing specific: "pr:" + chat JSON, or "gt:" + GT CheckRecipeResult id + "|" + NBT.
+     * Sent after the list like {@link #takesCard}.
+     */
+    public String reason = "";
+    /** Client side: the reason as text in the player's language, and the short flag key for the row. */
+    public String reasonText = "", reasonFlag;
     public int flags;
     /** Provider position, for highlighting it in the world. */
     public int dim, x, y, z;

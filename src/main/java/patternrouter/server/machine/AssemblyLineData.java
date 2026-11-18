@@ -37,23 +37,40 @@ public final class AssemblyLineData {
         return result;
     }
 
-    /** The same places GT's checkProcessing reads: the stick in the controller slot, then the data hatches. */
     private static boolean knows(MTEAssemblyLine line, ItemStack output) {
+        return recipeOf(line, output) != null;
+    }
+
+    /** The researched recipe for this output on the first assembly line among the machines that has it, or null. */
+    public static RecipeAssemblyLine recipeFor(List<IMetaTileEntity> machines, ItemStack output) {
+        if (output == null) return null;
+        for (IMetaTileEntity mte : machines) {
+            if (!(mte instanceof MTEAssemblyLine line)) continue;
+            try {
+                RecipeAssemblyLine r = recipeOf(line, output);
+                if (r != null) return r;
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    /** The same places GT's checkProcessing reads: the stick in the controller slot, then the data hatches. */
+    private static RecipeAssemblyLine recipeOf(MTEAssemblyLine line, ItemStack output) {
         ItemStack controllerStick = line.getStackInSlot(1);
         if (AssemblyLineUtils.isItemDataStick(controllerStick)) {
             Collection<RecipeAssemblyLine> fromStick = AssemblyLineUtils.findALRecipeFromDataStick(controllerStick);
             if (fromStick != null) {
                 for (RecipeAssemblyLine r : fromStick) {
-                    if (r != null && r.mOutput != null && r.mOutput.isItemEqual(output)) return true;
+                    if (r != null && r.mOutput != null && r.mOutput.isItemEqual(output)) return r;
                 }
             }
         }
         for (MTEHatchDataAccess hatch : line.mDataAccessHatches) {
             if (hatch == null || !hatch.isValid()) continue;
             for (RecipeAssemblyLine r : hatch.getAssemblyLineRecipes()) {
-                if (r != null && r.mOutput != null && r.mOutput.isItemEqual(output)) return true;
+                if (r != null && r.mOutput != null && r.mOutput.isItemEqual(output)) return r;
             }
         }
-        return false;
+        return null;
     }
 }

@@ -29,6 +29,8 @@ public class LateMixinLoader implements ILateMixinLoader {
         if (FMLLaunchHandler.side() == Side.CLIENT && loadedMods.contains("appliedenergistics2")) {
             // Mouse wheel over the side panel scrolls its list instead of the terminal grid.
             mixins.add("ae2.AEBaseGuiWheelMixin");
+            // Typing into the panel's search field.
+            mixins.add("ae2.GuiMEMonitorableKeyMixin");
         }
         return mixins;
     }

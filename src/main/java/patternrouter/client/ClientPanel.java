@@ -25,6 +25,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.resources.I18n;
@@ -82,7 +83,7 @@ public class ClientPanel {
     /** Conflict row: machine with the old pattern and an Extract button. */
     private static final int CONF_H = 26;
     private static final int CONF_ROWS = 3;
-    private static final int HEADER = 22;
+    private static final int HEADER = 27;
     private static final int FOOTER = 22;
     /** Title-bar room on the right: the "hide full" toggle and the side arrow. */
     private static final int TITLE_BUTTONS = 40;
@@ -113,6 +114,11 @@ public class ClientPanel {
     private final List<ConflictRow> confRows = new ArrayList<>();
     private final List<GuiButton> extractButtons = new ArrayList<>();
     private ScrollBar bar;
+    /** Search field under the title: filters the list by name. */
+    private GuiTextField search;
+    private String query = "";
+    private int searchH;
+    private static final int SEARCH_H = 15;
     /** Fold/unfold button placed in AE2's button column left of the terminal. */
     private ToggleButton toggle;
     /** The terminal's button list (to find AE2's button column). */
@@ -179,7 +185,30 @@ public class ClientPanel {
         if (gui != null && Minecraft.getMinecraft().currentScreen != gui) {
             gui = null;
             resetList();
+            query = "";
+            if (search != null) search.setText("");
         }
+        if (search != null) search.updateCursorCounter();
+    }
+
+    /**
+     * A key in the terminal (from the AE2 GUI mixin): typed into the search field while it has focus, and eaten so AE2,
+     * NEI and the inventory key don't act on it. Esc and Enter only leave the field.
+     */
+    public boolean onKey(Object screen, char typed, int key) {
+        if (screen != gui || gui == null || search == null || !search.isFocused()) return false;
+        if (key == org.lwjgl.input.Keyboard.KEY_ESCAPE || key == org.lwjgl.input.Keyboard.KEY_RETURN) {
+            search.setFocused(false);
+            return true;
+        }
+        search.textboxKeyTyped(typed, key);
+        if (!search.getText()
+            .equals(query)) {
+            query = search.getText();
+            applyFilter();
+            scrollPx = scrollTarget = 0;
+        }
+        return true;
     }
 
     @SubscribeEvent
@@ -206,6 +235,11 @@ public class ClientPanel {
             extractButtons.add(x);
             e.buttonList.add(x);
         }
+        search = new GuiTextField(Minecraft.getMinecraft().fontRenderer, 0, 0, 10, 10);
+        search.setEnableBackgroundDrawing(false);
+        search.setMaxStringLength(48);
+        search.setTextColor(0xFFFFFF);
+        search.setText(query);
         bar = new ScrollBar(BASE_ID + 100);
         e.buttonList.add(bar);
         side = new PanelButton(BASE_ID + 102, 14, 14, "");
@@ -356,6 +390,11 @@ public class ClientPanel {
                 List<String> tip = new ArrayList<>();
                 tip.add(displayName(en));
                 tip.add(flagsLine(en, true));
+                if (en.reasonText != null && !en.reasonText.isEmpty()) {
+                    // Why it doesn't fit, wrapped so a long GT message stays readable.
+                    for (String line : Minecraft.getMinecraft().fontRenderer
+                        .listFormattedStringToWidth(en.reasonText, 220)) tip.add("§c" + line);
+                }
                 tip.add("§7" + I18n.format("patternrouter.tip.click"));
                 tip.add("§7" + I18n.format("patternrouter.tip.highlight"));
                 drawTooltip(tip, e.mouseX, e.mouseY);
@@ -468,13 +507,29 @@ public class ClientPanel {
     }
 
     private void applyFilter() {
-        if (!Config.hideFull) {
+        String q = query.trim()
+            .toLowerCase();
+        if (!Config.hideFull && q.isEmpty()) {
             entries = received;
             return;
         }
         entries = new ArrayList<>();
-        // Full means all capacity cards in as well: a click on a full interface adds a card first.
-        for (ProviderEntry e : received) if (e.freeSlots > 0 || e.takesCard) entries.add(e);
+        for (ProviderEntry e : received) {
+            // Full means all capacity cards in as well: a click on a full interface adds a card first.
+            if (Config.hideFull && e.freeSlots == 0 && !e.takesCard) continue;
+            if (!q.isEmpty() && !plain(displayName(e)).contains(q)) continue;
+            entries.add(e);
+        }
+    }
+
+    private static String plain(String s) {
+        String t = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(s);
+        return t == null ? "" : t.toLowerCase();
+    }
+
+    /** The search row shows once there is something to search, and stays while a query is typed. */
+    private boolean searchShown() {
+        return search != null && (received.size() > 1 || !query.isEmpty());
     }
 
     public void onResult(ActionResultMessage msg) {
@@ -596,7 +651,8 @@ public class ClientPanel {
             footer = Math.max(FOOTER, lines * 10 + 10);
         }
         // Fit the screen height: fewer conflict rows first ("…and N more"), then fewer machine rows (scrollable).
-        int avail = gui.height - 4 - HEADER - footer - noteBlock;
+        searchH = searchShown() ? SEARCH_H : 0;
+        int avail = gui.height - 4 - HEADER - searchH - footer - noteBlock;
         rowsCap = Math.max(MIN_ROWS, Math.min(Config.panelRows, MAX_ROWS));
         confCap = CONF_ROWS;
         while (listHeight(rowsCap) + confHeight(confCap) > avail && confCap > 1) confCap--;
@@ -611,7 +667,7 @@ public class ClientPanel {
         int confBlock = confHeight(confCap);
 
         int body = shown * ROW_H + (shown > 0 ? 4 : 0) + noteBlock + confBlock;
-        ph = HEADER + Math.max(body, 12) + footer;
+        ph = HEADER + searchH + Math.max(body, 12) + footer;
         if (Config.panelCustom) {
             py = clamp(top + Config.panelY, 2, gui.height - ph - 2);
         } else {
@@ -619,7 +675,15 @@ public class ClientPanel {
             // Don't cover NEI's page bar ("< 1/3 >") above its item/bookmark list.
             py = Math.max(py, neiBarBottom(px, pw, py));
         }
-        listY = py + HEADER;
+        listY = py + HEADER + searchH;
+        if (search != null) {
+            search.xPosition = px + 9;
+            search.yPosition = py + HEADER + 2;
+            search.width = pw - 18;
+            search.height = 10;
+            search.setVisible(visible && searchH > 0);
+            if (!search.getVisible()) search.setFocused(false);
+        }
         noteY = listY + shown * ROW_H + (shown > 0 ? 4 : 0);
         confY = noteY + (noteLines > 0 ? noteLines * 10 + 4 : 0);
 
@@ -656,7 +720,7 @@ public class ClientPanel {
             x.visible = on;
         }
         side.xPosition = px + pw - 5 - side.width;
-        side.yPosition = py + 4;
+        side.yPosition = py + 6;
         side.displayString = onRight ? "◀" : "▶";
         side.visible = visible;
         hideFull.xPosition = side.xPosition - 2 - hideFull.width;
@@ -800,6 +864,8 @@ public class ClientPanel {
                 return I18n.format("patternrouter.note.noassembler");
             default:
                 if (!entries.isEmpty()) return "";
+                if (!received.isEmpty() && !query.trim()
+                    .isEmpty()) return I18n.format("patternrouter.note.nomatch");
                 return received.isEmpty() ? I18n.format("patternrouter.note.empty")
                     : I18n.format("patternrouter.note.allfull");
         }
@@ -826,14 +892,14 @@ public class ClientPanel {
             // Title: the pattern being uploaded in a slot, plus the caption.
             int tx = xPosition + 8;
             if (currentPattern != null) {
-                drawSlot(xPosition + 5, yPosition + 2);
-                drawItem(mc, currentPattern, xPosition + 6, yPosition + 3);
+                drawSlot(xPosition + 5, yPosition + 4);
+                drawItem(mc, currentPattern, xPosition + 6, yPosition + 5);
                 tx = xPosition + 27;
             }
             int titleRoom = xPosition + width - TITLE_BUTTONS - tx;
             String title = I18n.format("patternrouter.title");
             if (fr.getStringWidth(title) > titleRoom) title = I18n.format("patternrouter.title.short");
-            fr.drawString(ellipsize(fr, title, titleRoom), tx, yPosition + 7, GUI_TEXT);
+            fr.drawString(ellipsize(fr, title, titleRoom), tx, yPosition + 9, GUI_TEXT);
             boolean statusShown = System.currentTimeMillis() < statusUntil && !status.isEmpty();
             if (entries.size() > rowsCap && !statusShown) {
                 // Position in the footer, left of the resize grip (the title keeps its room).
@@ -848,6 +914,19 @@ public class ClientPanel {
             int shown = Math.min(entries.size(), rowsCap);
             if (shown > 0) drawInset(xPosition + 4, listY - 1, width - 8, shown * ROW_H + 1);
             drawGrip(xPosition + width - GRIP - 3, yPosition + height - GRIP - 3, resizing || overGrip(mx, my));
+            if (search != null && search.getVisible()) {
+                // Search row under the title, inset like AE2's own search box.
+                drawInset(xPosition + 5, yPosition + HEADER - 1, width - 10, SEARCH_H - 2);
+                search.drawTextBox();
+                if (search.getText()
+                    .isEmpty() && !search.isFocused()) {
+                    fr.drawString(
+                        I18n.format("patternrouter.search.hint"),
+                        search.xPosition,
+                        search.yPosition + 1,
+                        0xC8C8C8);
+                }
+            }
             String n = noteText();
             if (!n.isEmpty()) {
                 List<String> wrapped = fr.listFormattedStringToWidth(n, width - 16);
@@ -884,6 +963,8 @@ public class ClientPanel {
                 && my < yPosition + HEADER;
             boolean onArrow = side != null && AeStyle.isOver(side, mx, my)
                 || hideFull != null && AeStyle.isOver(hideFull, mx, my);
+            // Any click: focus the search field when on it, leave it otherwise.
+            if (search != null && search.getVisible()) search.mouseClicked(mx, my, 0);
             if (visible && overGrip(mx, my)) {
                 resizing = true;
                 resizeStartY = my;

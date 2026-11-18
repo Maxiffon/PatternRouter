@@ -4,6 +4,9 @@ import java.util.List;
 
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.JsonToNBT;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.IChatComponent;
 import net.minecraft.util.StatCollector;
@@ -21,6 +24,49 @@ final class EntryText {
         e.name = resolveName(e.name, e.icon);
         e.suffix = parseSuffix(e.suffix);
         if (e.suffix.isEmpty() && !e.setupItems.isEmpty()) e.suffix = setupCaption(e.setupItems);
+        localizeReason(e);
+    }
+
+    /** Why the row doesn't fit: the server's reason, or one known from the flags. */
+    private static void localizeReason(ProviderEntry e) {
+        e.reasonText = "";
+        e.reasonFlag = null;
+        String r = e.reason == null ? "" : e.reason;
+        try {
+            if (r.startsWith("pr:")) {
+                IChatComponent c = IChatComponent.Serializer.func_150699_a(r.substring(3));
+                if (c != null) e.reasonText = c.getFormattedText();
+                if (c instanceof ChatComponentTranslation t) e.reasonFlag = SHORT.get(t.getKey());
+            } else if (r.startsWith("gt:")) {
+                int bar = r.indexOf('|');
+                String id = r.substring(3, bar < 0 ? r.length() : bar);
+                gregtech.api.recipe.check.CheckRecipeResult sample = gregtech.api.recipe.check.CheckRecipeResultRegistry
+                    .getSampleFromRegistry(id);
+                gregtech.api.recipe.check.CheckRecipeResult result = sample.newInstance();
+                if (bar >= 0) result.readFromNBT((NBTTagCompound) JsonToNBT.func_150315_a(r.substring(bar + 1)));
+                e.reasonText = result.getDisplayString();
+                e.reasonFlag = id.contains("heat") ? "patternrouter.flag.heat"
+                    : id.contains("power") || id.contains("voltage") ? "patternrouter.flag.power"
+                        : "patternrouter.flag.cantrun";
+            }
+        } catch (Throwable ignored) {
+            // GT result unknown to this client's GT: fall back to the flags
+        }
+        if (e.reasonText.isEmpty() && e.has(ProviderEntry.SETUP_CONFLICTS)) {
+            e.reasonText = I18n.format(
+                e.has(ProviderEntry.NO_FLUIDS) ? "patternrouter.why.nofluid"
+                    : e.has(ProviderEntry.OTHER_MODE) ? "patternrouter.why.othermode.any"
+                        : "patternrouter.why.othermold");
+        }
+    }
+
+    /** Server reason key: the short flag shown in the row. */
+    private static final java.util.Map<String, String> SHORT = new java.util.HashMap<>();
+    static {
+        SHORT.put("patternrouter.why.power", "patternrouter.flag.power");
+        SHORT.put("patternrouter.why.heat", "patternrouter.flag.heat");
+        SHORT.put("patternrouter.why.research", "patternrouter.flag.research");
+        SHORT.put("patternrouter.why.othermode", "patternrouter.flag.othermode");
     }
 
     static String displayName(ProviderEntry e) {
@@ -81,6 +127,7 @@ final class EntryText {
     }
 
     private static String conflictKey(ProviderEntry e) {
+        if (e.reasonFlag != null) return e.reasonFlag;
         if (e.has(ProviderEntry.NO_FLUIDS)) return "patternrouter.flag.nofluid";
         if (e.has(ProviderEntry.OTHER_MODE)) return "patternrouter.flag.othermode";
         return "patternrouter.flag.othermold";
