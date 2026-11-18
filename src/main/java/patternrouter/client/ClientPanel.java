@@ -24,6 +24,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -32,6 +33,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraftforge.client.event.GuiScreenEvent;
 
 import org.lwjgl.input.Mouse;
+import org.lwjgl.opengl.GL11;
 
 import appeng.container.implementations.ContainerPatternTerm;
 import appeng.container.slot.SlotFake;
@@ -67,7 +69,16 @@ public class ClientPanel {
     private static final int LEFT_GAP = 54;
     /** Candidate row: machine name, CRIB caption (mold/circuit), flags. */
     private static final int ROW_H = 34;
-    private static final int ROWS = 5;
+    /** Most rows the player can stretch the list to (Config.panelRows); one more button for a half-scrolled row. */
+    public static final int MAX_ROWS = 20;
+    public static final int MIN_ROWS = 2;
+    /** Scroll bar right of the list. */
+    private static final int SB_W = 7;
+    /** Resize grip in the bottom-right corner. */
+    private static final int GRIP = 10;
+    /** Wheel step and how much of the way to the target the list moves per frame. */
+    private static final int WHEEL_STEP = ROW_H / 2;
+    private static final float EASE = 0.35f;
     /** Conflict row: machine with the old pattern and an Extract button. */
     private static final int CONF_H = 24;
     private static final int CONF_ROWS = 3;
@@ -79,7 +90,14 @@ public class ClientPanel {
     private int footer = FOOTER;
 
     private int statusWidth() {
-        return pw - 16 - (up != null && up.visible ? 50 : 0);
+        return pw - 16 - GRIP;
+    }
+
+    /** The panel of this client (the AE2 wheel mixin reaches it here). */
+    public static ClientPanel INSTANCE;
+
+    public ClientPanel() {
+        INSTANCE = this;
     }
 
     private static final int BASE_ID = 0x6A5000;
@@ -94,7 +112,13 @@ public class ClientPanel {
     private final List<RowButton> rows = new ArrayList<>();
     private final List<ConflictRow> confRows = new ArrayList<>();
     private final List<GuiButton> extractButtons = new ArrayList<>();
-    private GuiButton up, down;
+    private ScrollBar bar;
+    /** Dragging the scroll bar thumb: mouse offset from the thumb top. */
+    private boolean barDragging;
+    private int barGrab;
+    /** Dragging the resize grip: mouse y and row count when it started. */
+    private boolean resizing;
+    private int resizeStartY, resizeStartRows;
     /** Title-bar arrow that moves the panel to the other side of the terminal. */
     private GuiButton side;
     /** Title-bar toggle: hide providers without a free slot. */
@@ -124,7 +148,11 @@ public class ClientPanel {
     private List<ProviderEntry> entries = Collections.emptyList();
     private List<ProviderEntry> conflicts = Collections.emptyList();
     private int note = -1;
-    private int scroll;
+    /** List scroll in pixels: shown, and where the wheel/thumb wants it (the list eases toward it). */
+    private float scrollPx, scrollTarget;
+    private int maxScrollPx;
+    /** Height of the list viewport this frame. */
+    private int viewH;
     private boolean waiting;
     private String status = "";
     private int statusColor;
@@ -161,7 +189,7 @@ public class ClientPanel {
         extractButtons.clear();
         bg = new Background(BASE_ID);
         e.buttonList.add(bg);
-        for (int i = 0; i < ROWS; i++) {
+        for (int i = 0; i <= MAX_ROWS; i++) {
             RowButton b = new RowButton(BASE_ID + 1 + i, i);
             rows.add(b);
             e.buttonList.add(b);
@@ -174,10 +202,8 @@ public class ClientPanel {
             extractButtons.add(x);
             e.buttonList.add(x);
         }
-        up = new PanelButton(BASE_ID + 100, 20, 16, "▲");
-        down = new PanelButton(BASE_ID + 101, 20, 16, "▼");
-        e.buttonList.add(up);
-        e.buttonList.add(down);
+        bar = new ScrollBar(BASE_ID + 100);
+        e.buttonList.add(bar);
         side = new PanelButton(BASE_ID + 102, 14, 14, "");
         e.buttonList.add(side);
         hideFull = new PanelButton(BASE_ID + 103, 14, 14, "");
@@ -214,7 +240,62 @@ public class ClientPanel {
         if (pattern != null) currentPattern = pattern;
         visible = pattern != null || System.currentTimeMillis() < statusUntil;
         if (dragging) drag(e.mouseX, e.mouseY);
+        if (resizing) resize(e.mouseY);
+        if (barDragging) {
+            if (Mouse.isButtonDown(0)) scrollToThumb(e.mouseY - barGrab);
+            else barDragging = false;
+        }
+        // Ease toward the target; the thumb drag sets both, so it follows the mouse exactly.
+        float d = scrollTarget - scrollPx;
+        scrollPx = Math.abs(d) < 0.5f ? scrollTarget : scrollPx + d * EASE;
         relayout();
+    }
+
+    /** Grip held: one row more or less per row height the mouse moved; saved on release. */
+    private void resize(int my) {
+        if (Mouse.isButtonDown(0)) {
+            int rows = resizeStartRows + Math.round((my - resizeStartY) / (float) ROW_H);
+            Config.panelRows = Math.max(MIN_ROWS, Math.min(rows, MAX_ROWS));
+            return;
+        }
+        resizing = false;
+        // Stretched past the screen: keep what fits.
+        Config.setPanelRows(Math.max(MIN_ROWS, Math.min(Config.panelRows, rowsCap)));
+    }
+
+    /** Thumb top at this y: the matching scroll position. */
+    private void scrollToThumb(int thumbY) {
+        int room = viewH - thumbHeight();
+        float f = room <= 0 ? 0 : (thumbY - listY) / (float) room;
+        scrollTarget = scrollPx = Math.max(0, Math.min(1, f)) * maxScrollPx;
+    }
+
+    private int thumbHeight() {
+        int content = entries.size() * ROW_H;
+        return content <= 0 ? viewH : Math.max(12, Math.min(viewH, viewH * viewH / content));
+    }
+
+    private int thumbY() {
+        return listY + (maxScrollPx <= 0 ? 0 : Math.round((viewH - thumbHeight()) * scrollPx / maxScrollPx));
+    }
+
+    /**
+     * Mouse wheel over the panel (from the AE2 GUI mixin): scrolls the list and is eaten, so the terminal grid and NEI
+     * under it don't scroll too. Returns false when the mouse is elsewhere.
+     */
+    public boolean onWheel(Object screen, int dwheel) {
+        if (screen != gui || gui == null || !visible || dwheel == 0) return false;
+        Minecraft mc = Minecraft.getMinecraft();
+        int mx = Mouse.getEventX() * gui.width / mc.displayWidth;
+        int my = gui.height - Mouse.getEventY() * gui.height / mc.displayHeight - 1;
+        if (mx < px || mx >= px + pw || my < py || my >= py + ph) return false;
+        scrollTarget = Math.max(0, Math.min(maxScrollPx, scrollTarget - Integer.signum(dwheel) * WHEEL_STEP));
+        return true;
+    }
+
+    /** List index shown in this row button this frame. */
+    private int rowIndex(int slot) {
+        return (int) scrollPx / ROW_H + slot;
     }
 
     /** Follow the mouse while the button is held; on release push off NEI's page bar and save. */
@@ -240,8 +321,8 @@ public class ClientPanel {
     public void onDrawPost(GuiScreenEvent.DrawScreenEvent.Post e) {
         if (e.gui != gui || gui == null || !visible) return;
         for (RowButton b : rows) {
-            if (b.visible && b.hovered(e.mouseX, e.mouseY)) {
-                ProviderEntry en = entries.get(scroll + b.slot);
+            if (b.visible && !barDragging && !resizing && b.hovered(e.mouseX, e.mouseY)) {
+                ProviderEntry en = entries.get(rowIndex(b.slot));
                 List<String> tip = new ArrayList<>();
                 tip.add(displayName(en));
                 tip.add(flagsLine(en, true));
@@ -289,24 +370,22 @@ public class ClientPanel {
         int id = e.button.id;
         if (id < BASE_ID || id > BASE_ID + 200) return;
         e.setCanceled(true);
-        if (e.button == up) scroll--;
-        else if (e.button == down) scroll++;
-        else if (e.button == side) {
+        if (e.button == side) {
             Config.setPanelSide(onRight ? "left" : "right");
             layoutHorizontal();
             relayout();
         } else if (e.button == hideFull) {
             Config.setHideFull(!Config.hideFull);
             applyFilter();
-            scroll = 0;
+            scrollPx = scrollTarget = 0;
         } else if (e.button instanceof ConflictRow) {
             int i = ((ConflictRow) e.button).slot;
             if (i < conflicts.size()) highlight(conflicts.get(i));
         } else if (e.button instanceof RowButton && GuiScreen.isShiftKeyDown()) {
-            int index = scroll + ((RowButton) e.button).slot;
+            int index = rowIndex(((RowButton) e.button).slot);
             if (index < entries.size()) highlight(entries.get(index));
         } else if (e.button instanceof RowButton) {
-            int index = scroll + ((RowButton) e.button).slot;
+            int index = rowIndex(((RowButton) e.button).slot);
             if (index < entries.size()) {
                 ProviderEntry picked = entries.get(index);
                 lastActionName = displayName(picked);
@@ -350,7 +429,7 @@ public class ClientPanel {
         applyFilter();
         conflicts = msg.conflicts;
         note = msg.note;
-        scroll = 0;
+        scrollPx = scrollTarget = 0;
         waiting = false;
         requestSentAt = 0;
     }
@@ -455,7 +534,7 @@ public class ClientPanel {
     }
 
     /** Machine rows and conflict rows that fit on screen this frame (see relayout). */
-    private int rowsCap = ROWS, confCap = CONF_ROWS;
+    private int rowsCap = MIN_ROWS, confCap = CONF_ROWS;
 
     private int listHeight(int cap) {
         int shown = Math.min(entries.size(), cap);
@@ -485,13 +564,16 @@ public class ClientPanel {
         }
         // Fit the screen height: fewer conflict rows first ("…and N more"), then fewer machine rows (scrollable).
         int avail = gui.height - 4 - HEADER - footer - noteBlock;
-        rowsCap = ROWS;
+        rowsCap = Math.max(MIN_ROWS, Math.min(Config.panelRows, MAX_ROWS));
         confCap = CONF_ROWS;
         while (listHeight(rowsCap) + confHeight(confCap) > avail && confCap > 1) confCap--;
         while (listHeight(rowsCap) + confHeight(confCap) > avail && rowsCap > 1) rowsCap--;
         int shown = Math.min(entries.size(), rowsCap);
-        int maxScroll = Math.max(0, entries.size() - rowsCap);
-        scroll = Math.max(0, Math.min(scroll, maxScroll));
+        viewH = shown * ROW_H;
+        maxScrollPx = Math.max(0, entries.size() * ROW_H - viewH);
+        scrollTarget = Math.max(0, Math.min(scrollTarget, maxScrollPx));
+        scrollPx = Math.max(0, Math.min(scrollPx, maxScrollPx));
+        boolean scrollable = maxScrollPx > 0;
         int confShown = Math.min(conflicts.size(), confCap);
         int confBlock = confHeight(confCap);
 
@@ -513,13 +595,20 @@ public class ClientPanel {
         bg.width = pw;
         bg.height = ph;
         bg.visible = visible;
+        int offset = (int) scrollPx % ROW_H;
         for (RowButton b : rows) {
+            int y = listY + b.slot * ROW_H - offset;
             b.xPosition = px + 5;
-            b.yPosition = listY + b.slot * ROW_H;
-            b.width = pw - 10;
+            b.yPosition = y;
+            b.width = pw - 10 - (scrollable ? SB_W + 1 : 0);
             b.height = ROW_H - 1;
-            b.visible = visible && b.slot < rowsCap && scroll + b.slot < entries.size();
+            b.visible = visible && rowIndex(b.slot) < entries.size() && y < listY + viewH;
         }
+        bar.xPosition = px + pw - 5 - SB_W;
+        bar.yPosition = listY;
+        bar.width = SB_W;
+        bar.height = viewH;
+        bar.visible = visible && scrollable;
         for (int i = 0; i < CONF_ROWS; i++) {
             ConflictRow c = confRows.get(i);
             GuiButton x = extractButtons.get(i);
@@ -533,12 +622,6 @@ public class ClientPanel {
             x.yPosition = c.yPosition + (CONF_H - 1 - 16) / 2;
             x.visible = on;
         }
-        up.xPosition = px + pw - 48;
-        down.xPosition = px + pw - 26;
-        up.yPosition = down.yPosition = py + ph - footer + 3;
-        up.visible = down.visible = visible && entries.size() > rowsCap;
-        up.enabled = scroll > 0;
-        down.enabled = scroll < maxScroll;
         side.xPosition = px + pw - 5 - side.width;
         side.yPosition = py + 4;
         side.displayString = onRight ? "◀" : "▶";
@@ -553,8 +636,7 @@ public class ClientPanel {
         for (GuiButton b : rows) park(b);
         for (GuiButton b : confRows) park(b);
         for (GuiButton b : extractButtons) park(b);
-        park(up);
-        park(down);
+        park(bar);
         park(side);
         park(hideFull);
         // Refresh NEI's slot mask right away when the panel appears, disappears, moves or resizes.
@@ -650,7 +732,8 @@ public class ClientPanel {
         note = -1;
         waiting = false;
         requestSentAt = 0;
-        scroll = 0;
+        scrollPx = scrollTarget = 0;
+        barDragging = resizing = false;
     }
 
     private void setStatus(String text, int color, long ms) {
@@ -719,16 +802,18 @@ public class ClientPanel {
             fr.drawString(ellipsize(fr, title, titleRoom), tx, yPosition + 7, GUI_TEXT);
             boolean statusShown = System.currentTimeMillis() < statusUntil && !status.isEmpty();
             if (entries.size() > rowsCap && !statusShown) {
-                // Page counter in the footer, left of the scroll arrows (the title keeps its room).
-                String page = (scroll + 1) + "-" + Math.min(scroll + rowsCap, entries.size()) + "/" + entries.size();
+                // Position in the footer, left of the resize grip (the title keeps its room).
+                int first = rowIndex(0) + 1;
+                String page = first + "-" + Math.min(first + rowsCap - 1, entries.size()) + "/" + entries.size();
                 fr.drawString(
                     page,
-                    up.xPosition - 4 - fr.getStringWidth(page),
+                    xPosition + width - GRIP - 6 - fr.getStringWidth(page),
                     yPosition + height - footer + 7,
                     GUI_TEXT_DIM);
             }
             int shown = Math.min(entries.size(), rowsCap);
             if (shown > 0) drawInset(xPosition + 4, listY - 1, width - 8, shown * ROW_H + 1);
+            drawGrip(xPosition + width - GRIP - 3, yPosition + height - GRIP - 3, resizing || overGrip(mx, my));
             String n = noteText();
             if (!n.isEmpty()) {
                 List<String> wrapped = fr.listFormattedStringToWidth(n, width - 16);
@@ -765,6 +850,12 @@ public class ClientPanel {
                 && my < yPosition + HEADER;
             boolean onArrow = side != null && AeStyle.isOver(side, mx, my)
                 || hideFull != null && AeStyle.isOver(hideFull, mx, my);
+            if (visible && overGrip(mx, my)) {
+                resizing = true;
+                resizeStartY = my;
+                resizeStartRows = rowsCap;
+                return false;
+            }
             if (inTitle && !onArrow) {
                 dragging = true;
                 dragDX = mx - px;
@@ -784,15 +875,25 @@ public class ClientPanel {
             this.slot = slot;
         }
 
+        /** Over the row and inside the list: a half-scrolled row's hidden part takes no hover or click. */
         boolean hovered(int mx, int my) {
-            return AeStyle.isOver(this, mx, my);
+            return AeStyle.isOver(this, mx, my) && my >= listY && my < listY + viewH;
+        }
+
+        @Override
+        public boolean mousePressed(Minecraft mc, int mx, int my) {
+            return enabled && visible && hovered(mx, my);
         }
 
         @Override
         public void drawButton(Minecraft mc, int mx, int my) {
-            if (!visible || scroll + slot >= entries.size()) return;
-            ProviderEntry e = entries.get(scroll + slot);
-            boolean hover = hovered(mx, my);
+            if (!visible || rowIndex(slot) >= entries.size()) return;
+            withClip(mc, xPosition, listY, width, viewH, () -> drawRow(mc, mx, my));
+        }
+
+        private void drawRow(Minecraft mc, int mx, int my) {
+            ProviderEntry e = entries.get(rowIndex(slot));
+            boolean hover = hovered(mx, my) && !barDragging && !resizing;
             boolean pressed = hover && org.lwjgl.input.Mouse.isButtonDown(0);
             // Raised tile; bluish highlight on hover like AE2 selection.
             drawRaised(xPosition + 1, yPosition + 1, width - 2, height - 2, hover ? 0xFFD3DCE8 : GUI_FILL, pressed);
@@ -824,6 +925,68 @@ public class ClientPanel {
                 if (hasSuffix) fr.drawString(ellipsize(fr, e.suffix, tw), tx, yPosition + 12, GUI_TEXT_DIM);
             }
             fr.drawString(ellipsize(fr, flagsLine(e, fr, tw), tw), tx, yPosition + 22, GUI_TEXT_DIM);
+        }
+    }
+
+    /** Scroll bar: inset track, raised thumb; a press on the track jumps there, a drag moves the list with it. */
+    private class ScrollBar extends GuiButton {
+
+        ScrollBar(int id) {
+            super(id, 0, 0, 1, 1, "");
+        }
+
+        @Override
+        public void drawButton(Minecraft mc, int mx, int my) {
+            if (!visible) return;
+            drawInset(xPosition, yPosition, width, height);
+            boolean hot = barDragging || AeStyle.isOver(this, mx, my);
+            drawRaised(xPosition, thumbY(), width, thumbHeight(), hot ? 0xFFD3DCE8 : GUI_FILL, false);
+        }
+
+        @Override
+        public boolean mousePressed(Minecraft mc, int mx, int my) {
+            if (!visible || !AeStyle.isOver(this, mx, my)) return false;
+            int top = thumbY(), h = thumbHeight();
+            barGrab = my >= top && my < top + h ? my - top : h / 2;
+            barDragging = true;
+            scrollToThumb(my - barGrab);
+            return false; // no click sound, no action
+        }
+    }
+
+    /** Bottom-right corner where the grip is. */
+    private boolean overGrip(int mx, int my) {
+        int gx = px + pw - GRIP - 3, gy = py + ph - GRIP - 3;
+        return mx >= gx && mx < gx + GRIP && my >= gy && my < gy + GRIP;
+    }
+
+    /** Diagonal ridges like a window resize corner. */
+    private static void drawGrip(int x, int y, boolean hot) {
+        int dark = hot ? 0xFF2A2A2A : AeStyle.BEVEL_DARK;
+        for (int i = 0; i < GRIP; i++) {
+            for (int k = 0; k < 3; k++) {
+                int d = GRIP - 1 - k * 3; // ridge: x + y == d
+                int j = d - i;
+                if (j < 0 || j >= GRIP) continue;
+                GuiButton.drawRect(x + i, y + j, x + i + 1, y + j + 1, dark);
+                if (i + 1 < GRIP && j + 1 < GRIP) {
+                    GuiButton.drawRect(x + i + 1, y + j, x + i + 2, y + j + 1, AeStyle.BEVEL_LIGHT);
+                }
+            }
+        }
+    }
+
+    /** Draws only inside this rectangle (GUI coordinates). */
+    private static void withClip(Minecraft mc, int x, int y, int w, int h, Runnable draw) {
+        ScaledResolution sr = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight);
+        int f = sr.getScaleFactor();
+        boolean was = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(x * f, mc.displayHeight - (y + h) * f, Math.max(0, w * f), Math.max(0, h * f));
+        try {
+            draw.run();
+        } finally {
+            if (!was) GL11.glDisable(GL11.GL_SCISSOR_TEST);
         }
     }
 

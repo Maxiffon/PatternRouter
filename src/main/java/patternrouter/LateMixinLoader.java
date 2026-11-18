@@ -26,6 +26,10 @@ public class LateMixinLoader implements ILateMixinLoader {
             // Remember the NEI recipe transferred into the pattern terminal.
             mixins.add("nei.RecipeHandlerRefMixin");
         }
+        if (FMLLaunchHandler.side() == Side.CLIENT && loadedMods.contains("appliedenergistics2")) {
+            // Mouse wheel over the side panel scrolls its list instead of the terminal grid.
+            mixins.add("ae2.AEBaseGuiWheelMixin");
+        }
         return mixins;
     }
 }
