@@ -7,8 +7,6 @@ interfaces and CRIBs whose GregTech machine can run that recipe. One click puts 
 
 https://github.com/user-attachments/assets/6eed40cf-077b-4422-a57c-003cbaba9132
 
-![Pattern terminal with the panel](docs/overview-crafting.png)
-
 ## Features
 - **Machine match by recipe map**, not by name. Renamed interfaces still work.
 - **Mold / circuit / lens check** with the real GT recipe lookup: pattern inputs plus what the machine holds (CRIB
