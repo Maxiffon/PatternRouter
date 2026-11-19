@@ -1,13 +1,11 @@
-
-
-https://github.com/user-attachments/assets/6eed40cf-077b-4422-a57c-003cbaba9132
-
 # Pattern Router
 
 Side panel for the AE2 pattern terminal in GT: New Horizons. After you encode a processing pattern, it lists the ME
 interfaces and CRIBs whose GregTech machine can run that recipe. One click puts the pattern there.
 
 ![logo](src/main/resources/assets/patternrouter/logo.png)
+
+https://github.com/user-attachments/assets/6eed40cf-077b-4422-a57c-003cbaba9132
 
 ![Pattern terminal with the panel](docs/overview-crafting.png)
 
