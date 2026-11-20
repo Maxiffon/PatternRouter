@@ -24,7 +24,8 @@ import patternrouter.PatternRouter;
  * Can the machine run the recipe at all: enough power (energy and laser hatches, amperage, the machine's EU discount)
  * and whatever else the machine checks itself before it starts a recipe (coil heat with its per-voltage bonus, glass
  * or casing tier, ...). The machine is asked through its own GT processing logic, so every machine applies its own
- * rules; nothing here guesses them.
+ * rules; nothing here guesses them. Only machines whose check is known to only read are asked
+ * ({@link ReadOnlyRecipeCheck}); for the others the power check is all.
  */
 public final class MachineLimits {
 
@@ -95,6 +96,8 @@ public final class MachineLimits {
                 if (need > have) return Reason.power(need, voltage, amps);
             }
             if (logic == null || recipe == null || VALIDATE == null) return null;
+            // Only machines whose check is known to only read: for the rest it is the start of a recipe.
+            if (!ReadOnlyRecipeCheck.mayAsk(logic)) return null;
             CheckRecipeResult result = (CheckRecipeResult) VALIDATE.invoke(logic, recipe);
             if (result == null || result.wasSuccessful()) return null;
             if ("insufficient_heat".equals(result.getID())) {

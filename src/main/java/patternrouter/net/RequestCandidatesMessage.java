@@ -36,9 +36,19 @@ public class RequestCandidatesMessage implements IMessage {
         this.machineName = machineName == null ? "" : machineName;
     }
 
+    /**
+     * An NEI category id as NEI handlers name them ("gt.recipe.alloysmelter", "crafting"). Anything else did not come
+     * from NEI; it is dropped before it can reach the saved choices, and the pattern contents decide instead.
+     */
+    private static final java.util.regex.Pattern CATEGORY = java.util.regex.Pattern
+        .compile("[A-Za-z0-9_.:/+ \\-]{1,96}");
+
     @Override
     public void fromBytes(ByteBuf buf) {
+        // Read on the server from whatever the client sent: every field is checked here.
         category = ByteBufUtils.readUTF8String(buf);
+        if (!CATEGORY.matcher(category)
+            .matches()) category = "";
         int n = buf.readUnsignedByte();
         if (n > MAX_NON_CONSUMABLES) {
             // Not written by this mod's client: the rest can't be read reliably, drop the request.
@@ -48,9 +58,12 @@ public class RequestCandidatesMessage implements IMessage {
         }
         for (int i = 0; i < n; i++) {
             ItemStack s = ByteBufUtils.readItemStack(buf);
-            if (s != null) nonConsumables.add(s);
+            if (s != null && s.getItem() != null && s.stackSize >= 0) nonConsumables.add(s);
         }
         machineName = ByteBufUtils.readUTF8String(buf);
+        if (machineName.length() > MAX_MACHINE_NAME_LENGTH) {
+            machineName = machineName.substring(0, MAX_MACHINE_NAME_LENGTH);
+        }
     }
 
     @Override

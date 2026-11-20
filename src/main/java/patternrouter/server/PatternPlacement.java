@@ -102,10 +102,21 @@ public final class PatternPlacement {
             reply(player, ActionResultMessage.GONE, ProviderCompat.rawName(view));
             return;
         }
+        // Room first: in creative mode a full inventory "takes" the stack and deletes it.
+        if (!hasRoomFor(player.inventory, now)) {
+            reply(player, ActionResultMessage.INVENTORY_FULL, ProviderCompat.rawName(view));
+            return;
+        }
         ItemStack taken = now.copy();
         inv.setInventorySlotContents(conflict.slot, null);
         inv.markDirty();
-        player.inventory.addItemStackToInventory(taken);
+        try {
+            player.inventory.addItemStackToInventory(taken);
+        } catch (Throwable t) {
+            // Whatever did not reach the player goes back; a half-added stack is not lost either way.
+            PatternRouter.LOG
+                .warn("Pattern Router could not give the pattern back to {}", player.getCommandSenderName(), t);
+        }
         if (taken.stackSize > 0) {
             // Inventory full (or only part fit): what is left goes back into the slot.
             inv.setInventorySlotContents(conflict.slot, taken.stackSize == now.stackSize ? now : taken);
@@ -117,6 +128,20 @@ public final class PatternPlacement {
         player.inventoryContainer.detectAndSendChanges();
         open.detectAndSendChanges();
         reply(player, ActionResultMessage.EXTRACTED, ProviderCompat.rawName(view));
+    }
+
+    /** The whole stack fits into the player's main inventory: free slots plus room on equal stacks. */
+    static boolean hasRoomFor(net.minecraft.entity.player.InventoryPlayer inv, ItemStack stack) {
+        int left = stack.stackSize;
+        int limit = Math.min(stack.getMaxStackSize(), inv.getInventoryStackLimit());
+        for (ItemStack s : inv.mainInventory) {
+            if (s == null) left -= limit;
+            else if (stack.isStackable() && s.getItem() == stack.getItem()
+                && (!s.getHasSubtypes() || s.getItemDamage() == stack.getItemDamage())
+                && ItemStack.areItemStackTagsEqual(s, stack)) left -= Math.max(0, limit - s.stackSize);
+            if (left <= 0) return true;
+        }
+        return false;
     }
 
     /** The player's list with this token, if it is the one shown in the pattern terminal still open; else null. */

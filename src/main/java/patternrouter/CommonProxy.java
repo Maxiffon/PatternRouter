@@ -60,6 +60,7 @@ public class CommonProxy {
     }
 
     private static void runQueuedTasks() {
+        ServerQueue.requeueDeferred();
         Runnable task;
         int budget = MAX_TASKS_PER_TICK;
         long deadline = System.nanoTime() + TICK_BUDGET_NS;
@@ -97,6 +98,7 @@ public class CommonProxy {
     public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.player instanceof EntityPlayerMP player) BenchCommand.onLogout(player);
         CandidateSearch.forgetPlayer(event.player.getUniqueID());
+        ServerQueue.forgetPlayer(event.player.getUniqueID());
     }
 
     /** Forge-bus events (the proxy itself listens on the FML bus). */
